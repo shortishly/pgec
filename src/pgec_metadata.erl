@@ -13,25 +13,24 @@
 %% limitations under the License.
 
 
--module(pgec_util).
+-module(pgec_metadata).
 
 
--export([snake_case/1]).
--export([tl_snake_case/1]).
+-export([callback_mode/0]).
+-export([init/1]).
+-export([start_link/0]).
 
 
-snake_case([_ | _] = Labels) ->
-    list_to_atom(lists:concat(lists:join("_", Labels))).
+start_link() ->
+    gen_statem:start_link({local, ?MODULE},
+                          ?MODULE,
+                          [],
+                          pgec_config:options(?MODULE)).
 
 
-split_on_snake_case(Name) ->
-    string:split(atom_to_list(Name), "_").
+callback_mode() ->
+    handle_event_function.
 
-tl_snake_case(Name) ->
-    case split_on_snake_case(Name) of
-        [_] ->
-            Name;
 
-        Names ->
-            snake_case(tl(Names))
-    end.
+init([]) ->
+    {ok, ready, #{metadata => ets:new(?MODULE, [public, named_table])}}.

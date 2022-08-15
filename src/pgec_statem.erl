@@ -13,25 +13,11 @@
 %% limitations under the License.
 
 
--module(pgec_util).
+-module(pgec_statem).
 
 
--export([snake_case/1]).
--export([tl_snake_case/1]).
+-export([nei/1]).
 
 
-snake_case([_ | _] = Labels) ->
-    list_to_atom(lists:concat(lists:join("_", Labels))).
-
-
-split_on_snake_case(Name) ->
-    string:split(atom_to_list(Name), "_").
-
-tl_snake_case(Name) ->
-    case split_on_snake_case(Name) of
-        [_] ->
-            Name;
-
-        Names ->
-            snake_case(tl(Names))
-    end.
+nei(Event) ->
+    {next_event, internal, Event}.

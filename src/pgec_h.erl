@@ -18,6 +18,7 @@
 
 -export([init/2]).
 -include_lib("kernel/include/logger.hrl").
+-include_lib("stdlib/include/ms_transform.hrl").
 
 
 init(#{bindings := #{publication := Publication,
@@ -52,44 +53,65 @@ init(#{bindings := #{publication := Publication,
     end;
 
 init(#{bindings := #{publication := Publication,
-                     table := _}} = Req,
+                     table := Table}} = Req,
      Opts) ->
-    case pgmp_pg:get_members([pgmp_rep_log_ets, Publication]) of
-        [Manager] when is_pid(Manager) ->
-            {reply, Metadata} = gen_statem:receive_response(
-                                  pgmp_rep_log_ets:metadata(
-                                    #{server_ref => Manager})),
+    case ets:lookup(
+           pgec_metadata,
+           {Publication, Table}) of
 
-            Columns = maps:get(table(Req), Metadata),
-
+        [{_, Columns}] ->
             {ok,
              cowboy_req:reply(
                200,
                headers(),
-               jsx:encode(
-                 ets:foldl(
-                   fun
-                       (Row, A) ->
-                           [maps:from_list(
-                              lists:zip(Columns, tuple_to_list(Row))) | A]
-                   end,
-                   [],
-                   table(Req))),
-              Req),
-             Opts}
+               [jsx:encode(
+                  ets:foldl(
+                    fun
+                        (Row, A) when is_tuple(element(1, Row)) ->
+                            [Key | Values] = tuple_to_list(Row),
+                            [maps:from_list(
+                               lists:zip(Columns,
+                                         tuple_to_list(Key) ++ Values)) | A];
+
+                        (Row, A) ->
+                            [maps:from_list(
+                               lists:zip(Columns, tuple_to_list(Row))) | A]
+                    end,
+                    [],
+                    table(Req))),
+                "\n"],
+               Req),
+             Opts};
+
+        [] ->
+            {ok, not_found(Req), Opts}
     end;
 
-init(#{bindings := #{publication := _Publication}} = Req, Opts) ->
-    {ok, not_found(Req), Opts};
+init(#{bindings := #{publication := Publication}} = Req, Opts) ->
+    {ok,
+     cowboy_req:reply(
+       200,
+       headers(),
+       [jsx:encode(ets:select(
+                     pgec_metadata,
+                     ets:fun2ms(
+                       fun
+                           ({{Pub, Table}, _}) when Publication == Pub ->
+                               Table
+                       end))),
+        "\n"],
+       Req),
+     Opts};
 
 init(Req, Opts) ->
     {ok,
      cowboy_req:reply(
        200,
        headers(),
-       jsx:encode(#{publications => pgmp_config:replication(
-                                      logical,
-                                      publication_names)}),
+       [jsx:encode(#{publications => pgmp_config:replication(
+                                       logical,
+                                       publication_names)}),
+        "\n"],
        Req),
      Opts}.
 

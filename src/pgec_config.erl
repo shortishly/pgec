@@ -17,10 +17,66 @@
 
 
 -export([http/1]).
+-export([options/1]).
 
 
 http(port = Name) ->
     envy(to_integer, [?FUNCTION_NAME, Name], 80).
+
+
+options(M) ->
+    case debug_options(M, [log, trace]) of
+        [] ->
+            [];
+
+        Options ->
+            [{debug, Options}]
+    end.
+
+
+debug_options(M, Options) ->
+    ?FUNCTION_NAME(M, Options, []).
+
+
+debug_options(M, [log = Option | Options], A) ->
+    case envy(to_boolean, [M, Option], false) of
+        true ->
+            try
+                ?FUNCTION_NAME(
+                   M,
+                   Options,
+                   [{log, envy(to_integer, [M, Option, n])} | A])
+            catch
+                error:badarg ->
+                    ?FUNCTION_NAME(
+                       M,
+                       Options,
+                       [log | A])
+
+            end;
+
+        false ->
+            ?FUNCTION_NAME(M, Options, A)
+    end;
+
+debug_options(M, [Option | Options], A) ->
+    ?FUNCTION_NAME(
+       M,
+       Options,
+       [Option || envy(to_boolean, [M, Option], false)] ++ A);
+
+debug_options(_, [], A) ->
+    A.
+
+
+envy(To, Names) ->
+    case envy:get_env(pgmp, pgmp_util:snake_case(Names), [os_env, app_env]) of
+        undefined ->
+            error(badarg, [To, Names]);
+
+        Value ->
+            any:To(Value)
+    end.
 
 
 envy(To, Names, Default) ->

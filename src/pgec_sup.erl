@@ -17,8 +17,11 @@
 
 
 -behaviour(supervisor).
+-export([get_child/2]).
 -export([init/1]).
 -export([start_link/0]).
+-export([supervisor/1]).
+-export([worker/1]).
 
 
 start_link() ->
@@ -26,5 +29,47 @@ start_link() ->
 
 
 init([]) ->
-    Procs = [],
-    {ok, {{one_for_one, 1, 5}, Procs}}.
+    {ok, configuration()}.
+
+configuration() ->
+    {#{}, children()}.
+
+
+children() ->
+    [worker(pgec_metadata) |
+     lists:map(
+       fun
+           (Publication) ->
+               worker(#{m => pgec_table_metadata,
+                        args => [#{publication => Publication}]})
+       end,
+       pgmp_config:replication(logical, publication_names))].
+
+
+worker(Arg) ->
+    child(Arg).
+
+
+supervisor(Arg) ->
+    maps:merge(child(Arg), #{type => supervisor}).
+
+
+child(#{m := M} = Arg) ->
+    maps:merge(
+      #{id => pgec_util:tl_snake_case(M), start => mfargs(Arg)},
+      maps:with(keys(), Arg));
+
+child(Arg) when is_atom(Arg) ->
+    ?FUNCTION_NAME(#{m => Arg}).
+
+
+mfargs(#{m := M} = Arg) ->
+    {M, maps:get(f, Arg, start_link), maps:get(args, Arg, [])}.
+
+
+keys() ->
+    [id, start, restart, significant, shutdown, type, modules].
+
+
+get_child(SupRef, Id) ->
+    lists:keyfind(Id, 1, supervisor:which_children(SupRef)).

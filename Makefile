@@ -39,6 +39,27 @@ dep_cowboy_commit = 2.9.0
 dep_pgmp_commit = develop
 
 
+
+PLT_APPS = \
+	any \
+	asn1 \
+	compiler \
+	crypto \
+	gproc \
+	inets \
+	jsx \
+	mnesia \
+	phrase \
+	public_key \
+	runtime_tools \
+	ssl \
+	stdlib \
+	syntax_tools \
+	tools \
+	xmerl
+
+
+BUILD_DEPS += relx
 include erlang.mk
 
 
