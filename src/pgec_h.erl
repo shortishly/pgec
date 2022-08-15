@@ -51,9 +51,33 @@ init(#{bindings := #{publication := Publication,
             not_found(Req)
     end;
 
-init(#{bindings := #{publication := _Publication, table := _Table}} = Req,
+init(#{bindings := #{publication := Publication,
+                     table := _}} = Req,
      Opts) ->
-    {ok, not_found(Req), Opts};
+    case pgmp_pg:get_members([pgmp_rep_log_ets, Publication]) of
+        [Manager] when is_pid(Manager) ->
+            {reply, Metadata} = gen_statem:receive_response(
+                                  pgmp_rep_log_ets:metadata(
+                                    #{server_ref => Manager})),
+
+            Columns = maps:get(table(Req), Metadata),
+
+            {ok,
+             cowboy_req:reply(
+               200,
+               headers(),
+               jsx:encode(
+                 ets:foldl(
+                   fun
+                       (Row, A) ->
+                           [maps:from_list(
+                              lists:zip(Columns, tuple_to_list(Row))) | A]
+                   end,
+                   [],
+                   table(Req))),
+              Req),
+             Opts}
+    end;
 
 init(#{bindings := #{publication := _Publication}} = Req, Opts) ->
     {ok, not_found(Req), Opts};
@@ -63,7 +87,9 @@ init(Req, Opts) ->
      cowboy_req:reply(
        200,
        headers(),
-       jsx:encode(#{publications => pgmp_config:replication(logical, publication_names)}),
+       jsx:encode(#{publications => pgmp_config:replication(
+                                      logical,
+                                      publication_names)}),
        Req),
      Opts}.
 
