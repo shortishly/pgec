@@ -13,26 +13,20 @@
 %% limitations under the License.
 
 
--module(pgec_statem).
+-module(common).
 
 
--export([cancel_generic_timeout/1]).
--export([generic_timeout/1]).
--export([generic_timeout/2]).
--export([nei/1]).
+-export([all/1]).
+-include_lib("common_test/include/ct.hrl").
 
 
-nei(Event) ->
-    {next_event, internal, Event}.
+is_a_test(is_a_test) ->
+    false;
+is_a_test(Function) ->
+    hd(lists:reverse(string:tokens(atom_to_list(Function), "_"))) =:= "test".
 
 
-generic_timeout(Name) ->
-    ?FUNCTION_NAME(Name, pgec_config:timeout(Name)).
-
-
-cancel_generic_timeout(Name) ->
-    generic_timeout(Name, infinity).
-
-
-generic_timeout(Name, Timeout) ->
-    {{timeout, Name}, Timeout, Name}.
+all(Module) ->
+    [Function || {Function, Arity} <- Module:module_info(exports),
+                 Arity =:= 1,
+                 is_a_test(Function)].

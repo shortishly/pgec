@@ -9,7 +9,25 @@ jobs:
         uses: actions/checkout@v2
       - name: Build
         run: make
-      - name: Beam Docker Relase
+      - name: PostgreSQL wal_level = logical
+        run: |
+          sudo pg_conftool set wal_level logical
+      - name: Start PostgreSQL service
+        run: |
+          sudo systemctl start postgresql.service
+          pg_isready
+      - name: Create PostgreSQL ci user
+        run: |
+          sudo -u postgres psql --command="create user ci password 'ci' superuser replication"
+      - name: Common Test
+        run: make ct
+        env:
+          PGMP_PGMP_REPLICATION_ENABLED: false
+          PGMP_DATABASE_USER: ci
+          PGMP_DATABASE_NAME: postgres
+          PGMP_DATABASE_PASSWORD: ci
+          PGEC_HTTP_PORT: 8080
+      - name: Beam Docker Release
         uses: shortishly/beam-docker-release-action@v1.18
         with:
           registry: ghcr.io

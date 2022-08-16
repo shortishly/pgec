@@ -1,7 +1,7 @@
 # PostgreSQL Edge Cache (PGEC)
 
-A JSON API edge cache of your data, `pgec` uses PostgreSQL
-logical replication to maintain consistency of the cache.
+A JSON cache for your reference data, using PostgreSQL
+logical replication to stay upto date.
 
 Please follow the [Quick
 Setup](https://www.postgresql.org/docs/current/logical-replication-quick-setup.html)
@@ -31,7 +31,7 @@ Type "help" for help.
 postgres=#
 ```
 
-Create a demo table:
+Create a demo table to explore:
 
 ```sql
 create table xy (x integer primary key, y text);
@@ -66,7 +66,6 @@ Taking a look at the `xy` table via the JSON API:
 ```shell
 curl http://localhost:8080/pub/xy
 ```
-
 ```json
 [{"x":1,"y":"foo"}]
 ```
@@ -78,10 +77,21 @@ streamed to `pgec` and applied to the edge cache.
 insert into xy values (2, 'bar');
 ```
 
+Any CRUD changes to the table are automatically pushed via logical
+replication to the `pgec` cache:
+
 ```shell
 curl http://localhost:8080/pub/xy
 ```
-
 ```json
 [{"x":1,"y":"foo"},{"x":2,"y":"bar"}]
+```
+
+To request the value for key `1`:
+
+```shell
+curl http://localhost:8080/pub/xy/2
+```
+```json
+{"x":2,"y":"bar"}
 ```

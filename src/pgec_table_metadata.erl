@@ -41,8 +41,16 @@ init([Arg]) ->
 
 handle_event(internal, get_members, _, #{publication := Publication}) ->
     {keep_state_and_data,
-     [nei({when_ready, Member}) || Member <- pgmp_pg:get_members(
-                                               [pgmp_rep_log_ets, Publication])]};
+     nei({get_members, pgmp_pg:get_members([pgmp_rep_log_ets, Publication])})};
+
+handle_event(internal, {get_members, []}, _, _) ->
+    {keep_state_and_data, pgec_statem:generic_timeout(no_members)};
+
+handle_event({timeout, no_members}, no_members, _, _) ->
+    {keep_state_and_data, nei(get_members)};
+
+handle_event(internal, {get_members, [Member]}, _, _) ->
+    {keep_state_and_data, nei({when_ready, Member})};
 
 handle_event(internal, {when_ready, Member}, _, _) ->
     {keep_state_and_data,

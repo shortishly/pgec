@@ -18,6 +18,14 @@
 
 -export([http/1]).
 -export([options/1]).
+-export([timeout/1]).
+
+
+timeout(no_members = Name) ->
+    envy(to_integer_or_atom, [Name, timeout], timer:seconds(1));
+
+timeout(Name) ->
+    envy(to_integer_or_atom, [Name, timeout], infinity).
 
 
 http(port = Name) ->
@@ -70,7 +78,7 @@ debug_options(_, [], A) ->
 
 
 envy(To, Names) ->
-    case envy:get_env(pgmp, pgmp_util:snake_case(Names), [os_env, app_env]) of
+    case envy:get_env(pgec, pgmp_util:snake_case(Names), [os_env, app_env]) of
         undefined ->
             error(badarg, [To, Names]);
 

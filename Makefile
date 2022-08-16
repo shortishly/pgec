@@ -17,6 +17,10 @@ PROJECT = pgec
 PROJECT_DESCRIPTION = PostgreSQL Edge Cache
 PROJECT_VERSION = 0.1.0
 
+
+BUILD_DEPS = \
+	relx
+
 DEPS = \
 	cowboy \
 	jsx \
@@ -25,12 +29,14 @@ DEPS = \
 SHELL_DEPS = \
 	sync
 
+LOCAL_DEPS = \
+	inets
+
 SHELL_OPTS = \
 	-config dev.config \
 	-s $(PROJECT) \
 	-s sync \
 	+pc unicode
-
 
 dep_pgmp = git https://github.com/shortishly/pgmp.git
 
@@ -39,11 +45,11 @@ dep_cowboy_commit = 2.9.0
 dep_pgmp_commit = develop
 
 
-
 PLT_APPS = \
 	any \
 	asn1 \
 	compiler \
+	cowboy \
 	crypto \
 	gproc \
 	inets \
@@ -59,7 +65,8 @@ PLT_APPS = \
 	xmerl
 
 
-BUILD_DEPS += relx
+RELX_TAR = 0
+
 include erlang.mk
 
 

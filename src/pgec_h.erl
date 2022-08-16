@@ -23,33 +23,34 @@
 
 init(#{bindings := #{publication := Publication,
                      table := Table,
-                     key := Key}} = Req,
+                     key := _}} = Req,
      Opts) ->
-    ?LOG_DEBUG(#{req => Req,
-                 table => Table,
-                 key => Key,
-                 opts => Opts}),
+    case ets:lookup(
+           pgec_metadata,
+           {Publication, Table}) of
 
-    case lists:member(
-           Publication,
-           pgmp_config:replication(logical, publication_names)) of
-
-        true ->
+        [{_, Columns}] ->
             case lookup(Req) of
-                [] ->
-                    {ok, not_found(Req), Opts};
-
-                [{_, Value}] ->
+                [Row] ->
                     {ok,
-                     cowboy_req:reply(200,
-                                      #{},
-                                      io_lib:format("~p~n", [Value]),
-                                      Req),
+                     cowboy_req:reply(
+                       200,
+                       headers(),
+                       [jsx:encode(row(Columns, Row)), "\n"],
+                       Req),
+                     Opts};
+
+                [] ->
+                    {ok,
+                     not_found(Req,
+                               #{publication => Publication,
+                                 key => key(Req),
+                                 table => Table}),
                      Opts}
             end;
 
-        false ->
-            not_found(Req)
+        [] ->
+            {ok, not_found(Req, #{publication => Publication, table => Table}), Opts}
     end;
 
 init(#{bindings := #{publication := Publication,
@@ -66,17 +67,7 @@ init(#{bindings := #{publication := Publication,
                headers(),
                [jsx:encode(
                   ets:foldl(
-                    fun
-                        (Row, A) when is_tuple(element(1, Row)) ->
-                            [Key | Values] = tuple_to_list(Row),
-                            [maps:from_list(
-                               lists:zip(Columns,
-                                         tuple_to_list(Key) ++ Values)) | A];
-
-                        (Row, A) ->
-                            [maps:from_list(
-                               lists:zip(Columns, tuple_to_list(Row))) | A]
-                    end,
+                    row(Columns),
                     [],
                     table(Req))),
                 "\n"],
@@ -120,6 +111,10 @@ headers() ->
     #{<<"content-type">> => <<"application/json">>}.
 
 
+not_found(Req, Body) ->
+    cowboy_req:reply(404, headers(), jsx:encode(Body), Req).
+
+
 not_found(Req) ->
     cowboy_req:reply(404, #{}, <<>>, Req).
 
@@ -128,7 +123,6 @@ lookup(Req) ->
     ?FUNCTION_NAME(table(Req), key(Req)).
 
 lookup(Table, Key) ->
-    ?LOG_DEBUG(#{table => Table, key => Key}),
     ets:lookup(Table, Key).
 
 table(#{bindings := #{table := Table}}) ->
@@ -137,3 +131,22 @@ table(#{bindings := #{table := Table}}) ->
 
 key(#{bindings := #{key := Expr}}) ->
     phrase_exprs:eval(#{expressions => phrase_exprs:parse_scan(binary_to_list(Expr))}).
+
+
+
+row(Columns) ->
+    fun
+        (Values, A) ->
+            [?FUNCTION_NAME(Columns, Values) | A]
+    end.
+
+
+row(Columns, Row) when is_tuple(element(1, Row)) ->
+    [Composite | Values] = tuple_to_list(Row),
+    maps:from_list(
+      lists:zip(Columns,
+                tuple_to_list(Composite) ++ Values));
+
+row(Columns, Row) ->
+    maps:from_list(
+      lists:zip(Columns, tuple_to_list(Row))).
