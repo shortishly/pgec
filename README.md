@@ -1,7 +1,7 @@
 # PostgreSQL Edge Cache (PGEC)
 
-A JSON cache for your reference data, using PostgreSQL
-logical replication to stay upto date.
+A JSON cache for your PostgreSQL data using logical replication to
+stay upto date.
 
 Please follow the [Quick
 Setup](https://www.postgresql.org/docs/current/logical-replication-quick-setup.html)
@@ -20,15 +20,10 @@ docker run \
     -c wal_level=logical
 ```
 
-A SQL shell:
+Run an interactive SQL shell so that we can create some demo data:
 
 ```shell
 docker exec --interactive --tty postgres psql postgres postgres
-
-psql (14.4 (Debian 14.4-1.pgdg110+1))
-Type "help" for help.
-
-postgres=#
 ```
 
 Create a demo table to explore:
@@ -44,12 +39,14 @@ With a PostgreSQL publication for that table:
 create publication pub for table xy;
 ```
 
-Start `pgec`, acting as an edge cache for publication. All data from
-the tables in the publication are retrieved, in a single transaction
-(using an extended query with batched execute). Once the initial data
-has been collected, streaming replication is then started, receiving
-changes that have applied since the transaction snapshot to ensure no
-loss of data.
+Leave the SQL shell running, start `pgec` in another terminal. `pgec`
+will act as an edge cache for publication we have just created. All
+data from the tables in the publication are retrieved, in a single
+transaction (using an extended query with batched execute). Once the
+initial data has been collected, streaming replication is then
+started, receiving changes that have applied since the transaction
+snapshot to ensure no loss of data. Streaming replication continues
+keeping `pgec` as an upto date cache of data.
 
 ```shell
 docker run \
@@ -67,7 +64,7 @@ Taking a look at the `xy` table via the JSON API:
 curl http://localhost:8080/pub/xy
 ```
 ```json
-[{"x":1,"y":"foo"}]
+{"rows": [{"x":1,"y":"foo"}]}
 ```
 
 Changes that are applied to the PostgreSQL table are automatically
@@ -84,10 +81,10 @@ replication to the `pgec` cache:
 curl http://localhost:8080/pub/xy
 ```
 ```json
-[{"x":1,"y":"foo"},{"x":2,"y":"bar"}]
+{"rows": [{"x":1, "y":"foo"}, {"x":2, "y":"bar"}]}
 ```
 
-To request the value for key `1`:
+To request the value for key `2`:
 
 ```shell
 curl http://localhost:8080/pub/xy/2
@@ -95,3 +92,18 @@ curl http://localhost:8080/pub/xy/2
 ```json
 {"x":2,"y":"bar"}
 ```
+
+
+## Container Environment
+
+The following environment variables can be used to configure the `pgec` docker container:
+
+|Variable | Default | Description |
+|-|-|-|
+|PGMP_REPLICATION_LOGICAL_PUBLICATION_NAMES | pub | Comma separated list of publication names to replicate |
+|PGMP_REPLICATION_LOGICAL_MAX_ROWS | 5000 | Maximum rows to page the initial replication table state |
+|PGMP_DATABASE_HOSTNAME | localhost | Database hostname |
+|PGMP_DATABASE_PORT | 5432 | Database port |
+|PGMP_DATABASE_USER | `os:getenv("USER")` | Database username |
+|PGMP_DATABASE_PASSWORD | "" | Database password |
+|PGMP_DATABASE_NAME | PGMP_DATABASE_USER | Database name |

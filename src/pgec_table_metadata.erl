@@ -82,8 +82,8 @@ handle_event(
       pgec_metadata,
       maps:fold(
         fun
-            (Table, Columns, A) ->
-                [{{Publication, atom_to_binary(Table)}, Columns} | A]
+            (Table, Data, A) ->
+                [{{Publication, Table}, Data} | A]
         end,
         [],
         Metadata)),

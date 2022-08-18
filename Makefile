@@ -15,7 +15,7 @@
 #
 PROJECT = pgec
 PROJECT_DESCRIPTION = PostgreSQL Edge Cache
-PROJECT_VERSION = 0.1.0
+PROJECT_VERSION = ${shell git describe --tags}
 
 
 BUILD_DEPS = \
@@ -42,7 +42,8 @@ dep_pgmp = git https://github.com/shortishly/pgmp.git
 
 
 dep_cowboy_commit = 2.9.0
-dep_pgmp_commit = develop
+dep_jsx_commit = v3.1.0
+dep_pgmp_commit = 0.4.0
 
 
 PLT_APPS = \

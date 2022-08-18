@@ -16,6 +16,7 @@
 -module(pgec_h).
 
 
+-define(JSON, <<"application/json">>).
 -export([init/2]).
 -include_lib("kernel/include/logger.hrl").
 -include_lib("stdlib/include/ms_transform.hrl").
@@ -25,18 +26,24 @@ init(#{bindings := #{publication := Publication,
                      table := Table,
                      key := _}} = Req,
      Opts) ->
+
     case ets:lookup(
            pgec_metadata,
            {Publication, Table}) of
 
-        [{_, Columns}] ->
-            case lookup(Req) of
+        [{_, Metadata}] ->
+            case lookup(Metadata, Req) of
                 [Row] ->
+                    ContentType = negotiate_content_type(Req),
+
                     {ok,
                      cowboy_req:reply(
                        200,
-                       headers(),
-                       [jsx:encode(row(Columns, Row)), "\n"],
+                       headers(ContentType),
+                       [encode(
+                          ContentType,
+                          row(ContentType, Metadata, Row)),
+                        "\n"],
                        Req),
                      Opts};
 
@@ -44,7 +51,7 @@ init(#{bindings := #{publication := Publication,
                     {ok,
                      not_found(Req,
                                #{publication => Publication,
-                                 key => key(Req),
+                                 key => key(Metadata, Req),
                                  table => Table}),
                      Opts}
             end;
@@ -56,20 +63,24 @@ init(#{bindings := #{publication := Publication,
 init(#{bindings := #{publication := Publication,
                      table := Table}} = Req,
      Opts) ->
+
+    ContentType = negotiate_content_type(Req),
+
     case ets:lookup(
            pgec_metadata,
            {Publication, Table}) of
 
-        [{_, Columns}] ->
+        [{_, Metadata}] ->
             {ok,
              cowboy_req:reply(
                200,
-               headers(),
-               [jsx:encode(
-                  ets:foldl(
-                    row(Columns),
-                    [],
-                    table(Req))),
+               headers(ContentType),
+               [encode(
+                  ContentType,
+                  #{rows => ets:foldl(
+                              row(ContentType, Metadata),
+                              [],
+                              table(Metadata, Req))}),
                 "\n"],
                Req),
              Opts};
@@ -79,17 +90,22 @@ init(#{bindings := #{publication := Publication,
     end;
 
 init(#{bindings := #{publication := Publication}} = Req, Opts) ->
+
+    ContentType = negotiate_content_type(Req),
+
     {ok,
      cowboy_req:reply(
        200,
-       headers(),
-       [jsx:encode(ets:select(
-                     pgec_metadata,
-                     ets:fun2ms(
-                       fun
-                           ({{Pub, Table}, _}) when Publication == Pub ->
-                               Table
-                       end))),
+       headers(ContentType),
+       [encode(
+          ContentType,
+          #{tables => ets:select(
+                        pgec_metadata,
+                        ets:fun2ms(
+                          fun
+                              ({{Pub, Table}, _}) when Publication == Pub ->
+                                  Table
+                          end))}),
         "\n"],
        Req),
      Opts};
@@ -107,8 +123,18 @@ init(Req, Opts) ->
      Opts}.
 
 
+%% Not much negotiation here, we only support JSON right now.
+%%
+negotiate_content_type(#{headers := #{}}) ->
+    ?JSON.
+
+
 headers() ->
-    #{<<"content-type">> => <<"application/json">>}.
+    ?FUNCTION_NAME(?JSON).
+
+
+headers(ContentType) ->
+    #{<<"content-type">> => ContentType}.
 
 
 not_found(Req, Body) ->
@@ -119,34 +145,66 @@ not_found(Req) ->
     cowboy_req:reply(404, #{}, <<>>, Req).
 
 
-lookup(Req) ->
-    ?FUNCTION_NAME(table(Req), key(Req)).
+lookup(Metadata, Req) ->
+    ets:lookup(table(Metadata, Req), key(Metadata, Req)).
 
-lookup(Table, Key) ->
-    ets:lookup(Table, Key).
 
-table(#{bindings := #{table := Table}}) ->
+table(_Metadata, #{bindings := #{table := Table}}) ->
     binary_to_existing_atom(Table).
 
 
-key(#{bindings := #{key := Expr}}) ->
-    phrase_exprs:eval(#{expressions => phrase_exprs:parse_scan(binary_to_list(Expr))}).
+key(#{keys := Positions, oids := Types}, #{bindings := #{key := Encoded}}) ->
+    case lists:map(
+           fun
+               (Position) ->
+                   lists:nth(Position, Types)
+           end,
+           Positions) of
 
-
-
-row(Columns) ->
-    fun
-        (Values, A) ->
-            [?FUNCTION_NAME(Columns, Values) | A]
+        [KeyOID] ->
+            [Decoded] = pgmp_data_row:decode(#{}, [{#{format => text, type_oid => KeyOID}, Encoded}]),
+            Decoded
     end.
 
 
-row(Columns, Row) when is_tuple(element(1, Row)) ->
-    [Composite | Values] = tuple_to_list(Row),
-    maps:from_list(
-      lists:zip(Columns,
-                tuple_to_list(Composite) ++ Values));
+encode(?JSON, Content) ->
+    jsx:encode(Content).
 
-row(Columns, Row) ->
-    maps:from_list(
-      lists:zip(Columns, tuple_to_list(Row))).
+
+row(ContentType, Metadata) ->
+    fun
+        (Values, A) ->
+            [?FUNCTION_NAME(ContentType, Metadata, Values) | A]
+    end.
+
+
+row(ContentType, #{columns := Columns, oids := OIDS}, Row) when is_tuple(element(1, Row)) ->
+    [Composite | Values] = tuple_to_list(Row),
+    ?FUNCTION_NAME(ContentType, Columns, OIDS, tuple_to_list(Composite) ++ Values, #{});
+
+row(ContentType, #{columns := Columns, oids := OIDS}, Row) ->
+    ?FUNCTION_NAME(ContentType, Columns, OIDS, tuple_to_list(Row), #{}).
+
+
+row(_ContentType, [], [], [] , A) ->
+    A;
+
+row(ContentType, [Column | Columns], [OID | OIDs], [Value | Values] , A) ->
+    #{OID := ColumnType} = pgmp_types:cache(),
+    ?FUNCTION_NAME(ContentType, Columns, OIDs, Values, A#{Column => value(ContentType, ColumnType, Value)}).
+
+
+value(_ContentType, #{<<"typname">> := <<"date">>}, {Ye, Mo, Da}) ->
+    iolist_to_binary(
+      io_lib:format(
+        "~4..0b-~2..0b-~2..0b",
+        [Ye, Mo, Da]));
+
+value(_ContentType, #{<<"typname">> := <<"time">>}, {Ho, Mi, Se}) ->
+    iolist_to_binary(
+      io_lib:format(
+        "~2..0b:~2..0b:~2..0b",
+        [Ho, Mi, Se]));
+
+value(_ContentType, _ColumnType, Value) ->
+    Value.
