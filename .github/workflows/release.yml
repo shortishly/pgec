@@ -33,10 +33,6 @@ jobs:
         with:
           name: ct-logs
           path: logs
-  publish:
-    needs: build
-    runs-on: ubuntu-latest
-    steps:
       - name: Beam Docker Release
         uses: shortishly/beam-docker-release-action@v1.18
         with:
