@@ -12,7 +12,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v2
       - name: Build
-        run: make
+        run: make deps app dialyze eunit
       - name: PostgreSQL wal_level = logical
         run: |
           sudo pg_conftool set wal_level logical

@@ -4,6 +4,10 @@ A JSON cache of PostgreSQL data with a simple REST API. Automatic
 database replication pushes changes ensuring that `pgec` remains upto
 date.
 
+![main](https://github.com/shortishly/pgmp/actions/workflows/main.yml/badge.svg)
+![release](https://github.com/shortishly/pgmp/actions/workflows/release.yml/badge.svg)
+
+
 A simple example, with a local `postgres` via `docker` to demostrate
 the concepts:
 
