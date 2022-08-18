@@ -5,7 +5,6 @@ database replication pushes changes ensuring that `pgec` remains upto
 date.
 
 ![main](https://github.com/shortishly/pgmp/actions/workflows/main.yml/badge.svg)
-![release](https://github.com/shortishly/pgmp/actions/workflows/release.yml/badge.svg)
 
 
 A simple example, with a local `postgres` via `docker` to demostrate
@@ -62,7 +61,7 @@ docker run \
     -e PGMP_DATABASE_USER=postgres \
     -e PGMP_DATABASE_PASSWORD=postgres \
     -e PGMP_DATABASE_HOSTNAME=host.docker.internal \
-    ghcr.io/shortishly/pgec:0.1.0
+    ghcr.io/shortishly/pgec:0.2.1
 ```
 
 The manifest of `pgec` docker image versions are
