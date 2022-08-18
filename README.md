@@ -1,13 +1,10 @@
 # PostgreSQL Edge Cache (PGEC)
 
-A JSON cache for your PostgreSQL data using logical replication to
-stay upto date.
+A JSON cache of PostgreSQL data with a simple REST API. Database
+replication pushes changes ensuring that `pgec` remains upto date.
 
-Please follow the [Quick
-Setup](https://www.postgresql.org/docs/current/logical-replication-quick-setup.html)
-for logical replication on your own PostgreSQL instance.
-
-Alternatively, with a local `postgres` via `docker`:
+A simple example, with a local `postgres` via `docker` to demostrate
+the concepts:
 
 ```shell
 docker run \
@@ -39,14 +36,14 @@ With a PostgreSQL publication for that table:
 create publication pub for table xy;
 ```
 
-Leave the SQL shell running, start `pgec` in another terminal. `pgec`
-will act as an edge cache for publication we have just created. All
-data from the tables in the publication are retrieved, in a single
-transaction (using an extended query with batched execute). Once the
-initial data has been collected, streaming replication is then
-started, receiving changes that have applied since the transaction
-snapshot to ensure no loss of data. Streaming replication continues
-keeping `pgec` as an upto date cache of data.
+Leaving the SQL shell running, start `pgec` in another
+terminal. `pgec` will act as an edge cache for publication we have
+just created. All data from the tables in the publication are
+retrieved, in a single transaction (using an extended query with
+batched execute). Once the initial data has been collected, streaming
+replication is then started, receiving changes that have applied since
+the transaction snapshot to ensure no loss of data. Streaming
+replication continues keeping `pgec` as an upto date cache of data.
 
 ```shell
 docker run \
@@ -57,6 +54,9 @@ docker run \
     -e PGMP_DATABASE_HOSTNAME=host.docker.internal \
     ghcr.io/shortishly/pgec:0.1.0
 ```
+
+The manifest of `pgec` docker image versions are
+[here](https://github.com/shortishly/pgec/pkgs/container/pgec).
 
 Taking a look at the `xy` table via the JSON API:
 
