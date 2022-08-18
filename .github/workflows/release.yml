@@ -33,6 +33,8 @@ jobs:
         with:
           name: ct-logs
           path: logs
+      - name: Release
+        run: make rel
       - name: Beam Docker Release
         uses: shortishly/beam-docker-release-action@v1.18
         with:
