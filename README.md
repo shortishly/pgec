@@ -1,7 +1,8 @@
 # PostgreSQL Edge Cache (PGEC)
 
-A JSON cache of PostgreSQL data with a simple REST API. Database
-replication pushes changes ensuring that `pgec` remains upto date.
+A JSON cache of PostgreSQL data with a simple REST API. Automatic
+database replication pushes changes ensuring that `pgec` remains upto
+date.
 
 A simple example, with a local `postgres` via `docker` to demostrate
 the concepts:
@@ -38,9 +39,11 @@ create publication pub for table xy;
 
 Leaving the SQL shell running, start `pgec` in another
 terminal. `pgec` will act as an edge cache for publication we have
-just created. All data from the tables in the publication are
-retrieved, in a single transaction (using an extended query with
-batched execute). Once the initial data has been collected, streaming
+just created.
+
+All data from the tables in the publication are retrieved, from
+transaction snapshot (using an extended query with batched
+execute). Once the initial data has been collected, streaming
 replication is then started, receiving changes that have applied since
 the transaction snapshot to ensure no loss of data. Streaming
 replication continues keeping `pgec` as an upto date cache of data.
@@ -48,7 +51,10 @@ replication continues keeping `pgec` as an upto date cache of data.
 ```shell
 docker run \
     --rm \
+    -d \
+    --name pgec \
     -p 8080:80 \
+    -e PGMP_REPLICATION_LOGICAL_PUBLICATION_NAMES=pub \
     -e PGMP_DATABASE_USER=postgres \
     -e PGMP_DATABASE_PASSWORD=postgres \
     -e PGMP_DATABASE_HOSTNAME=host.docker.internal \
@@ -57,6 +63,10 @@ docker run \
 
 The manifest of `pgec` docker image versions are
 [here](https://github.com/shortishly/pgec/pkgs/container/pgec).
+
+The `-p 8080:80` option above, is linking port 8080 on localhost to port
+80 on the `pgec` container. We can make http requests directly
+to `pgec`.
 
 Taking a look at the `xy` table via the JSON API:
 
@@ -93,17 +103,3 @@ curl http://localhost:8080/pub/xy/2
 {"x":2,"y":"bar"}
 ```
 
-
-## Container Environment
-
-The following environment variables can be used to configure the `pgec` docker container:
-
-|Variable | Default | Description |
-|-|-|-|
-|PGMP_REPLICATION_LOGICAL_PUBLICATION_NAMES | pub | Comma separated list of publication names to replicate |
-|PGMP_REPLICATION_LOGICAL_MAX_ROWS | 5000 | Maximum rows to page the initial replication table state |
-|PGMP_DATABASE_HOSTNAME | localhost | Database hostname |
-|PGMP_DATABASE_PORT | 5432 | Database port |
-|PGMP_DATABASE_USER | `os:getenv("USER")` | Database username |
-|PGMP_DATABASE_PASSWORD | "" | Database password |
-|PGMP_DATABASE_NAME | PGMP_DATABASE_USER | Database name |
