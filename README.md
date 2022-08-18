@@ -61,7 +61,7 @@ docker run \
     -e PGMP_DATABASE_USER=postgres \
     -e PGMP_DATABASE_PASSWORD=postgres \
     -e PGMP_DATABASE_HOSTNAME=host.docker.internal \
-    ghcr.io/shortishly/pgec:0.2.1
+    ghcr.io/shortishly/pgec:0.2.2
 ```
 
 The manifest of `pgec` docker image versions are
