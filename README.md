@@ -1,13 +1,13 @@
 # PostgreSQL Edge Cache (PGEC)
 
 A JSON cache of PostgreSQL data with a simple REST API. Automatic
-database replication pushes changes ensuring that `pgec` remains upto
+database replication pushes changes ensuring that `pgec` remains up to
 date.
 
 ![main](https://github.com/shortishly/pgmp/actions/workflows/main.yml/badge.svg)
 
 
-A simple example, with a local `postgres` via `docker` to demostrate
+A simple example, with a local `postgres` via `docker` to demonstrate
 the concepts:
 
 ```shell
@@ -21,13 +21,13 @@ docker run \
     -c wal_level=logical
 ```
 
-Run an interactive SQL shell so that we can create some demo data:
+Run an interactive SQL shell so that we can create some data:
 
 ```shell
 docker exec --interactive --tty postgres psql postgres postgres
 ```
 
-Create a demo table to explore:
+Create a demo table:
 
 ```sql
 create table xy (x integer primary key, y text);
@@ -44,12 +44,13 @@ Leaving the SQL shell running, start `pgec` in another
 terminal. `pgec` will act as an edge cache for publication we have
 just created.
 
-All data from the tables in the publication are retrieved, from
-transaction snapshot (using an extended query with batched
-execute). Once the initial data has been collected, streaming
-replication is then started, receiving changes that have applied since
-the transaction snapshot to ensure no loss of data. Streaming
-replication continues keeping `pgec` as an upto date cache of data.
+All data from the tables in the publication are retrieved, from a
+transaction snapshot (automatically created as part of the replication
+process, using an extended query with batched execute). Once the
+initial data has been collected, streaming replication starts,
+receiving changes that have been applied since the transaction
+snapshot ensuring no loss of data. Streaming replication continues
+keeping `pgec` as an up to date cache of data.
 
 ```shell
 docker run \
@@ -79,6 +80,9 @@ curl http://localhost:8080/pub/xy
 ```json
 {"rows": [{"x":1,"y":"foo"}]}
 ```
+
+Where, `pub` is the publication that we have created, and `xy` is a
+table that is part of that publication.
 
 Changes that are applied to the PostgreSQL table are automatically
 streamed to `pgec` and applied to the edge cache.
