@@ -43,21 +43,25 @@ dep_pgmp = git https://github.com/shortishly/pgmp.git
 
 dep_cowboy_commit = 2.9.0
 dep_jsx_commit = v3.1.0
-dep_pgmp_commit = 0.5.0
+dep_pgmp_commit = 0.8.1
 
 
 PLT_APPS = \
 	any \
 	asn1 \
+	bbmustache \
 	compiler \
 	cowboy \
+	cowlib \
 	crypto \
-	gproc \
+	envy \
 	inets \
 	jsx \
 	mnesia \
+	pgmp \
 	phrase \
 	public_key \
+	ranch \
 	runtime_tools \
 	ssl \
 	stdlib \
