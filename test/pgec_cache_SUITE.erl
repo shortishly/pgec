@@ -37,18 +37,22 @@ init_per_suite(Config) ->
                         replication_logical_publication_names,
                         Publication),
     application:set_env(pgmp, pgmp_replication_enabled, false),
-    application:set_env(pgmp, pgmp_mm_trace, false),
-    application:set_env(pgmp, pgmp_mm_log, true),
-    application:set_env(pgmp, pgmp_mm_log_n, 50),
+    application:set_env(pgmp, mm_trace, false),
+    application:set_env(pgmp, mm_log, true),
+    application:set_env(pgmp, mm_log_n, 50),
 
-    application:set_env(pgmp, pgmp_rep_log_trace, false),
-    application:set_env(pgmp, pgmp_rep_log_ets_trace, false),
+    application:set_env(pgmp, rep_log_trace, false),
+    application:set_env(pgmp, rep_log_ets_trace, false),
 
     application:set_env(pgec, http_port, Port),
-    application:set_env(pgec, pgec_table_metadata_trace, false),
+    application:set_env(pgec, table_metadata_trace, false),
 
     {ok, _} = pgec:start(),
 
+    ct:log("pgmp logical replication name: ~p~n",
+           [pgmp_config:replication(logical, publication_names)]),
+
+    logger:set_module_level([], debug),
 
     [{command_complete,
       create_table}] = pgmp_connection_sync:query(
@@ -86,16 +90,22 @@ init_per_suite(Config) ->
       end,
       lists:seq(1, 50)),
 
+    Columns = [<<"pubname">>,
+               <<"schemaname">>,
+               <<"tablename">>],
+
     [{parse_complete,[]}] =  pgmp_connection_sync:parse(
-                               #{sql => "select * from pg_catalog.pg_publication_tables "
-                                 "where pubname = $1"}),
+                               #{sql => lists:join(
+                                          " ",
+                                          ["select",
+                                           lists:join(",", Columns),
+                                           "from pg_catalog.pg_publication_tables",
+                                           "where pubname = $1"])}),
 
     [{bind_complete, []}] = pgmp_connection_sync:bind(#{args => [Publication]}),
 
     [{row_description,
-      [<<"pubname">>,
-       <<"schemaname">>,
-       <<"tablename">>]},
+      Columns},
      {data_row,
       [Publication,
        <<"public">>,
@@ -108,6 +118,15 @@ init_per_suite(Config) ->
     {ok, Sup} = pgmp_rep_sup:start_child(Publication),
 
     {_, Manager, worker, _} = pgmp_sup:get_child(Sup, manager),
+
+    ct:log("manager: ~p~n", [sys:get_state(Manager)]),
+
+    wait_for(ready,
+             fun
+                 () ->
+                     element(1, sys:get_state(Manager))
+             end,
+             5),
 
     ct:log("manager: ~p~n", [sys:get_state(Manager)]),
     ct:log("which_groups: ~p~n", [pgmp_pg:which_groups()]),
@@ -330,6 +349,8 @@ wait_for(Expected, Check, 0 = N) ->
 wait_for(Expected, Check, N) ->
     case Check() of
         Expected ->
+            ct:log("matched: ~p,~ncheck: ~p,~nn: ~p~n",
+                   [Expected, Check, N]),
             Expected;
 
         Unexpected ->

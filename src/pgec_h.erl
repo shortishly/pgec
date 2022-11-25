@@ -27,11 +27,15 @@ init(#{bindings := #{publication := Publication,
                      key := _}} = Req,
      Opts) ->
 
+    ?LOG_DEBUG(#{req => Req, opts => Opts}),
+
     case ets:lookup(
            pgec_metadata,
            {Publication, Table}) of
 
         [{_, Metadata}] ->
+            ?LOG_DEBUG(#{metadata => Metadata}),
+
             case lookup(Metadata, Req) of
                 [Row] ->
                     ContentType = negotiate_content_type(Req),
@@ -57,12 +61,15 @@ init(#{bindings := #{publication := Publication,
             end;
 
         [] ->
+            ?LOG_DEBUG(#{metadata => not_found}),
             {ok, not_found(Req, #{publication => Publication, table => Table}), Opts}
     end;
 
 init(#{bindings := #{publication := Publication,
                      table := Table}} = Req,
      Opts) ->
+
+    ?LOG_DEBUG(#{req => Req, opts => Opts}),
 
     ContentType = negotiate_content_type(Req),
 
@@ -90,6 +97,7 @@ init(#{bindings := #{publication := Publication,
     end;
 
 init(#{bindings := #{publication := Publication}} = Req, Opts) ->
+    ?LOG_DEBUG(#{req => Req, opts => Opts}),
 
     ContentType = negotiate_content_type(Req),
 
@@ -111,6 +119,8 @@ init(#{bindings := #{publication := Publication}} = Req, Opts) ->
      Opts};
 
 init(Req, Opts) ->
+    ?LOG_DEBUG(#{req => Req, opts => Opts}),
+
     {ok,
      cowboy_req:reply(
        200,
@@ -146,14 +156,18 @@ not_found(Req) ->
 
 
 lookup(Metadata, Req) ->
+    ?LOG_DEBUG(#{metadata => Metadata, req => Req}),
     ets:lookup(table(Metadata, Req), key(Metadata, Req)).
 
 
-table(_Metadata, #{bindings := #{table := Table}}) ->
+table(Metadata, #{bindings := #{table := Table}}) ->
+    ?LOG_DEBUG(#{metadata => Metadata, table => Table}),
     binary_to_existing_atom(Table).
 
 
 key(#{keys := Positions, oids := Types}, #{bindings := #{key := Encoded}}) ->
+    ?LOG_DEBUG(#{keys => Positions, oids => Types, key => Encoded}),
+
     case lists:map(
            fun
                (Position) ->
@@ -162,6 +176,7 @@ key(#{keys := Positions, oids := Types}, #{bindings := #{key := Encoded}}) ->
            Positions) of
 
         [KeyOID] ->
+            ?LOG_DEBUG(#{key_oid => keyOID}),
             [Decoded] = pgmp_data_row:decode(#{}, [{#{format => text, type_oid => KeyOID}, Encoded}]),
             Decoded
     end.
