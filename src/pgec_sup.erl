@@ -40,7 +40,8 @@ children() ->
      lists:map(
        fun
            (Publication) ->
-               worker(#{m => pgec_table_metadata,
+               worker(#{id => Publication,
+                        m => pgec_table_metadata,
                         args => [#{publication => Publication}]})
        end,
        pgmp_config:replication(logical, publication_names))].
