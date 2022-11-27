@@ -18,12 +18,13 @@ PROJECT_DESCRIPTION = PostgreSQL Edge Cache
 PROJECT_VERSION = ${shell git describe --tags}
 
 
-BUILD_DEPS = \
-	relx
+BUILD_DEPS += relx
+RELX_TAR = 0
 
 DEPS = \
 	cowboy \
 	jsx \
+	mcd \
 	pgmp
 
 SHELL_DEPS = \
@@ -38,11 +39,13 @@ SHELL_OPTS = \
 	-s sync \
 	+pc unicode
 
+dep_mcd = git https://github.com/shortishly/mcd.git
 dep_pgmp = git https://github.com/shortishly/pgmp.git
 
 
 dep_cowboy_commit = 2.9.0
 dep_jsx_commit = v3.1.0
+dep_mcd_commit = 0.1.2
 dep_pgmp_commit = 0.8.1
 
 
@@ -69,7 +72,5 @@ PLT_APPS = \
 	tools \
 	xmerl
 
-
-RELX_TAR = 0
 
 include erlang.mk

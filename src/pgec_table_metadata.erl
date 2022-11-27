@@ -24,8 +24,7 @@
 
 
 start_link(Arg) ->
-    gen_statem:start_link({local, ?MODULE},
-                          ?MODULE,
+    gen_statem:start_link(?MODULE,
                           [Arg],
                           envy_gen:options(?MODULE)).
 
@@ -104,6 +103,11 @@ handle_event(info, Msg, _, #{requests := Existing} = Data) ->
             {keep_state,
              Data#{requests := Updated},
              nei({response, #{label => Label, reply => Reply}})};
+
+        {{error, {normal, _}}, #{f := when_ready}, UpdatedRequests} ->
+            {stop,
+             normal,
+             Data#{requests := UpdatedRequests}};
 
         {{error, {Reason, ServerRef}}, Label, UpdatedRequests} ->
                 {stop,

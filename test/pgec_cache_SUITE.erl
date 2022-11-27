@@ -47,6 +47,8 @@ init_per_suite(Config) ->
     application:set_env(pgec, http_port, Port),
     application:set_env(pgec, table_metadata_trace, false),
 
+    application:set_env(mcd, protocol_callback, pgec_mcd_emulator),
+
     {ok, _} = pgec:start(),
 
     ct:log("pgmp logical replication name: ~p~n",
