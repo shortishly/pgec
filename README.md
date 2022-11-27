@@ -80,7 +80,7 @@ streaming replication continues keeping [pgec][shortishly-pgec] up to date.
 
 ## In Memory Database Replication Cache
 
-[pgec][pgec] is a real-time in memory database replication cache, with a
+[pgec][shortishly-pgec] is a real-time in memory database replication cache, with a
 [memcached][memcached-org] and REST API.
 
 
