@@ -5,6 +5,7 @@ memcached and REST API. It supports column lists and row filters with
 the latest features of replication in PostgreSQL 15.
 
 ![High Level Architecture](hla.png)
+
 ![main](https://github.com/shortishly/pgmp/actions/workflows/main.yml/badge.svg)
 
 A simple example, with a local `postgres` via `docker` to demonstrate
@@ -51,6 +52,9 @@ With a PostgreSQL publication for that table:
 create publication pub for table xy;
 ```
 
+pgec supports [row filters and column lists][shortishly-pgec] in
+PostgreSQL 15.
+
 Leave the SQL shell running. Start `pgec` in another terminal. `pgec`
 will act as an edge cache for publication we have just created.
 
@@ -72,7 +76,7 @@ The replication process creates a transaction checkpoint ensuring data
 integrity. Once the initial data has been collected, streaming
 replication starts, receiving changes that have been applied
 subsequent to the checkpoint, ensuring no loss of data. Real-time
-streaming replication continues keeping [pgec][pgec] up to date.
+streaming replication continues keeping [pgec][shortishly-pgec] up to date.
 
 ## In Memory Database Replication Cache
 
@@ -83,7 +87,7 @@ streaming replication continues keeping [pgec][pgec] up to date.
 ### memcached
 
 We can make [memcached][memcached-org] requests to get data from
-[pgec][pgec] on port 11211.
+[pgec][shortishly-pgec] on port 11211.
 
 The keys used have the format: `publication.table.key`. To get the key
 "1" from table "xy" and publication: "pub". We would use `get pub.xy.1`
@@ -147,3 +151,8 @@ curl http://localhost:8080/pub/xy/2
 {"x":2,"y":"bar"}
 ```
 
+
+[memcached-org]: https://memcached.org/
+[shortishly-log-rep-fifteen]: https://shortishly.com/blog/pgmp-log-rep-postgresql-fifteen/
+[shortishly-memcached]: https://shortishly.com/blog/mcd-emulating-memcached-with-statem-and-socket/
+[shortishly-pgec]: https://shortishly.com/blog/postgresql-edge-cache/
