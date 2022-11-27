@@ -21,7 +21,8 @@
 -include_lib("stdlib/include/ms_transform.hrl").
 
 
-recv(#{message := #{command := get, keys := Keys}}) ->
+recv(#{message := #{command := get, keys := Keys}} = Arg) ->
+    ?LOG_DEBUG(#{arg => Arg}),
     {continue,
      lists:foldl(
        fun
@@ -44,6 +45,8 @@ recv(#{message := #{command := get, keys := Keys}}) ->
 
 
 lookup(PTK) ->
+    ?LOG_DEBUG(#{ptk => PTK}),
+
     case metadata(PTK) of
         [{_, Metadata}] ->
             case lookup(Metadata, PTK) of
@@ -60,6 +63,7 @@ lookup(PTK) ->
 
 
 lookup(Metadata, PTK) ->
+    ?LOG_DEBUG(#{metadata => Metadata, ptk => PTK}),
      ets:lookup(table(Metadata, PTK), key(Metadata, PTK)).
 
 
@@ -85,11 +89,13 @@ key(#{keys := Positions, oids := Types} = Metadata, #{key := Encoded} = PTK) ->
     end.
 
 
-metadata(#{publication := Publication, table := Table}) ->
+metadata(#{publication := Publication, table := Table} = Arg) ->
+    ?LOG_DEBUG(#{arg => Arg}),
     ets:lookup(pgec_metadata, {Publication, Table}).
 
 
 ptk(PTK) ->
+    ?LOG_DEBUG(#{ptk => PTK}),
     [Publication, Table, Key] = string:split(PTK, ".", all),
     #{publication => Publication, table => Table, key => Key}.
 

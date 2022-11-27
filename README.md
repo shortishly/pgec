@@ -1,11 +1,11 @@
 # PostgreSQL Edge Cache (PGEC)
 
-A JSON cache of PostgreSQL data with a simple REST API. Automatic
-database replication pushes changes ensuring that `pgec` remains up to
-date.
+pgec is a real-time in memory database replication cache, with a
+memcached and REST API. It supports column lists and row filters with
+the latest features of replication in PostgreSQL 15.
 
+![High Level Architecture](hla.png)
 ![main](https://github.com/shortishly/pgmp/actions/workflows/main.yml/badge.svg)
-
 
 A simple example, with a local `postgres` via `docker` to demonstrate
 the concepts:
@@ -14,24 +14,35 @@ the concepts:
 docker run \
     --rm \
     --name postgres \
-    -d \
-    -p 5432:5432 \
-    -e POSTGRES_PASSWORD=postgres \
-    postgres:14 \
+    --detach \
+    --publish 5432:5432 \
+    --env POSTGRES_PASSWORD=postgres \
+    postgres:15 \
     -c wal_level=logical
 ```
 
-Run an interactive SQL shell so that we can create some data:
+An interactive SQL shell so that we can create some data:
 
 ```shell
-docker exec --interactive --tty postgres psql postgres postgres
+docker exec \
+    --interactive \
+    --tty \
+    postgres \
+    psql \
+    postgres \
+    postgres
 ```
 
 Create a demo table:
 
 ```sql
 create table xy (x integer primary key, y text);
-insert into xy values (1, 'foo');
+insert into xy
+    values
+        (1, 'foo'),
+        (2, 'bar'),
+        (3, 'baz'),
+        (4, 'boo');
 ```
 
 With a PostgreSQL publication for that table:
@@ -40,37 +51,56 @@ With a PostgreSQL publication for that table:
 create publication pub for table xy;
 ```
 
-Leaving the SQL shell running, start `pgec` in another
-terminal. `pgec` will act as an edge cache for publication we have
-just created.
-
-All data from the tables in the publication are retrieved, from a
-transaction snapshot (automatically created as part of the replication
-process, using an extended query with batched execute). Once the
-initial data has been collected, streaming replication starts,
-receiving changes that have been applied since the transaction
-snapshot ensuring no loss of data. Streaming replication continues
-keeping `pgec` as an up to date cache of data.
+Leave the SQL shell running. Start `pgec` in another terminal. `pgec`
+will act as an edge cache for publication we have just created.
 
 ```shell
 docker run \
     --rm \
-    -d \
+    --detach \
     --name pgec \
-    -p 8080:80 \
+    --publish 8080:80 \
+    --publish 11211:11211 \
     -e PGMP_REPLICATION_LOGICAL_PUBLICATION_NAMES=pub \
     -e PGMP_DATABASE_USER=postgres \
     -e PGMP_DATABASE_PASSWORD=postgres \
     -e PGMP_DATABASE_HOSTNAME=host.docker.internal \
-    ghcr.io/shortishly/pgec:0.2.2
+    ghcr.io/shortishly/pgec:develop
 ```
 
-The manifest of `pgec` docker image versions are
-[here](https://github.com/shortishly/pgec/pkgs/container/pgec).
+The replication process creates a transaction checkpoint ensuring data
+integrity. Once the initial data has been collected, streaming
+replication starts, receiving changes that have been applied
+subsequent to the checkpoint, ensuring no loss of data. Real-time
+streaming replication continues keeping [pgec][pgec] up to date.
 
-The `-p 8080:80` option above, is linking port 8080 on localhost to port
-80 on the `pgec` container. We can make http requests directly
-to `pgec`.
+## In Memory Database Replication Cache
+
+[pgec][pgec] is a real-time in memory database replication cache, with a
+[memcached][memcached-org] and REST API.
+
+
+### memcached
+
+We can make [memcached][memcached-org] requests to get data from
+[pgec][pgec] on port 11211.
+
+The keys used have the format: `publication.table.key`. To get the key
+"1" from table "xy" and publication: "pub". We would use `get pub.xy.1`
+as follows:
+
+```shell
+telnet localhost 11211
+Trying 127.0.0.1...
+Connected to localhost.
+Escape character is '^]'.
+get pub.xy.1
+VALUE pub.xy.1 0 17
+{"x":1,"y":"foo"}
+END
+```
+
+### REST
 
 Taking a look at the `xy` table via the JSON API:
 
@@ -78,7 +108,10 @@ Taking a look at the `xy` table via the JSON API:
 curl http://localhost:8080/pub/xy
 ```
 ```json
-{"rows": [{"x":1,"y":"foo"}]}
+{"rows": [{"x": 1, "y": "foo"},
+          {"x": 2, "y": "bar"},
+          {"x": 4, "y": "boo"},
+          {"x": 3, "y": "baz"}]}
 ```
 
 Where, `pub` is the publication that we have created, and `xy` is a
@@ -88,7 +121,7 @@ Changes that are applied to the PostgreSQL table are automatically
 streamed to `pgec` and applied to the edge cache.
 
 ```sql
-insert into xy values (2, 'bar');
+insert into xy values (5, 'pqr');
 ```
 
 Any CRUD changes to the table are automatically pushed via logical
@@ -98,7 +131,11 @@ replication to the `pgec` cache:
 curl http://localhost:8080/pub/xy
 ```
 ```json
-{"rows": [{"x":1, "y":"foo"}, {"x":2, "y":"bar"}]}
+{"rows": [{"x": 5, "y": "pqr"},
+          {"x": 1, "y": "foo"},
+          {"x": 2, "y": "bar"},
+          {"x": 4, "y": "boo"},
+          {"x": 3, "y": "baz"}]}
 ```
 
 To request the value for key `2`:
