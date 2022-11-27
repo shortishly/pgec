@@ -24,8 +24,7 @@
 
 
 start_link(Arg) ->
-    gen_statem:start_link({local, ?MODULE},
-                          ?MODULE,
+    gen_statem:start_link(?MODULE,
                           [Arg],
                           envy_gen:options(?MODULE)).
 
