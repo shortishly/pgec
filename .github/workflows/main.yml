@@ -37,11 +37,10 @@ jobs:
           name: ct-logs
           path: logs
       - name: Beam Docker Release
-        uses: shortishly/beam-docker-release-action@v1.22
+        uses: shortishly/beam-docker-release-action@v1.24
         with:
           registry: ghcr.io
           username: ${{github.actor}}
           password: ${{secrets.GITHUB_TOKEN}}
           build-image: erlang:25.1
-          build-platforms: linux/amd64
           build-tags: ghcr.io/${{github.repository}}:${{github.ref_name}}
