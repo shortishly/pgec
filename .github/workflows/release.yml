@@ -9,6 +9,9 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v2
+      - uses: erlef/setup-beam@v1
+        with:
+          otp-version: 25.1
       - name: Build
         run: make deps app dialyze eunit
       - name: PostgreSQL wal_level = logical
