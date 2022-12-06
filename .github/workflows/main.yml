@@ -51,3 +51,7 @@ jobs:
           password: ${{secrets.GITHUB_TOKEN}}
           build-image: erlang:${{env.otp_version}}
           build-tags: ghcr.io/${{github.repository}}:${{github.ref_name}}
+          image-description: >-
+            pgec is a real-time in memory database replication cache,
+            with a memcached and REST API.
+          image-licenses: Apache-2.0
