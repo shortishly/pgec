@@ -6,27 +6,31 @@ on:
       - develop
     tags:
       - '[0-9]+.[0-9]+.[0-9]+'
+env:
+  otp_version: '25.1'
 jobs:
   build:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v2
-      - uses: erlef/setup-beam@v1
+      - name: Setup BEAM
+        uses: erlef/setup-beam@v1
         with:
-          otp-version: 25.1
+          otp-version: ${{env.otp_version}}
       - name: Build
         run: make deps app dialyze eunit
       - name: PostgreSQL wal_level = logical
         run: |
           sudo pg_conftool set wal_level logical
-      - name: Start PostgreSQL service
+      - name: Start and wait for PostgreSQL service
         run: |
           sudo systemctl start postgresql.service
           pg_isready
       - name: Create PostgreSQL ci user
-        run: |
-          sudo -u postgres psql --command="create user ci password 'ci' superuser replication"
+        run: >-
+          sudo -u postgres psql
+          --command="create user ci password 'ci' superuser replication"
       - name: Common Test
         run: make ct
         env:
@@ -40,10 +44,10 @@ jobs:
           name: ct-logs
           path: logs
       - name: Beam Docker Release
-        uses: shortishly/beam-docker-release-action@v1.24
+        uses: shortishly/beam-docker-release-action@e130f4b006d4b57e65db72a447b511202a3533d5
         with:
           registry: ghcr.io
           username: ${{github.actor}}
           password: ${{secrets.GITHUB_TOKEN}}
-          build-image: erlang:25.1
+          build-image: erlang:${{env.otp_version}}
           build-tags: ghcr.io/${{github.repository}}:${{github.ref_name}}
