@@ -4,29 +4,33 @@ on:
     branches:
       - main
       - develop
-    tags-ignore:
+    tags:
       - '[0-9]+.[0-9]+.[0-9]+'
+env:
+  otp_version: '25.1'
 jobs:
   build:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v2
-      - uses: erlef/setup-beam@v1
+      - name: Setup BEAM
+        uses: erlef/setup-beam@v1
         with:
-          otp-version: 25.1
+          otp-version: ${{env.otp_version}}
       - name: Build
         run: make deps app dialyze eunit
       - name: PostgreSQL wal_level = logical
         run: |
           sudo pg_conftool set wal_level logical
-      - name: Start PostgreSQL service
+      - name: Start and wait for PostgreSQL service
         run: |
           sudo systemctl start postgresql.service
           pg_isready
       - name: Create PostgreSQL ci user
-        run: |
-          sudo -u postgres psql --command="create user ci password 'ci' superuser replication"
+        run: >-
+          sudo -u postgres psql
+          --command="create user ci password 'ci' superuser replication"
       - name: Common Test
         run: make ct
         env:
@@ -40,10 +44,13 @@ jobs:
           name: ct-logs
           path: logs
       - name: Beam Docker Release
-        uses: shortishly/beam-docker-release-action@v1.24
+        uses: shortishly/beam-docker-release-action@dc28758ee7b614d7186ea65bd4b3f86a053b28a2
         with:
           registry: ghcr.io
           username: ${{github.actor}}
           password: ${{secrets.GITHUB_TOKEN}}
-          build-image: erlang:25.1
-          build-tags: ghcr.io/${{github.repository}}:${{github.ref_name}}
+          build-image: erlang:${{env.otp_version}}
+          image-description: >-
+            pgec is a real-time in memory database replication cache,
+            with a memcached and REST API.
+          image-licenses: Apache-2.0
