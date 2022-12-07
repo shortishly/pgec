@@ -44,13 +44,12 @@ jobs:
           name: ct-logs
           path: logs
       - name: Beam Docker Release
-        uses: shortishly/beam-docker-release-action@38441191acb4bc4951f001c78b9145359fa4d38a
+        uses: shortishly/beam-docker-release-action@6dc3bb4166457975b043248a6192e23f50544c1c
         with:
           registry: ghcr.io
           username: ${{github.actor}}
           password: ${{secrets.GITHUB_TOKEN}}
           build-image: erlang:${{env.otp_version}}
-          build-tags: ghcr.io/${{github.repository}}:${{github.ref_name}}
           image-description: >-
             pgec is a real-time in memory database replication cache,
             with a memcached and REST API.
