@@ -44,7 +44,7 @@ jobs:
           name: ct-logs
           path: logs
       - name: Beam Docker Release
-        uses: shortishly/beam-docker-release-action@ad641a28dbc0175b9da20ab0e0122d4b0ad61597
+        uses: shortishly/beam-docker-release-action@38441191acb4bc4951f001c78b9145359fa4d38a
         with:
           registry: ghcr.io
           username: ${{github.actor}}
