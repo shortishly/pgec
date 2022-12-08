@@ -6,6 +6,14 @@ the latest features of replication in PostgreSQL 15.
 
 ![High Level Architecture](hla.png)
 
+The replication process creates a transaction checkpoint ensuring data
+integrity. Once the initial data has been collected, streaming
+replication starts, receiving changes that have been applied
+subsequent to the checkpoint, ensuring no loss of data. Streaming
+replication continues keeping [pgec][shortishly-pgec] up to date in
+real-time.
+
+
 ![main](https://github.com/shortishly/pgmp/actions/workflows/main.yml/badge.svg)
 
 A simple example, with a local `postgres` via `docker` to demonstrate
@@ -69,20 +77,21 @@ docker run \
     -e PGMP_DATABASE_USER=postgres \
     -e PGMP_DATABASE_PASSWORD=postgres \
     -e PGMP_DATABASE_HOSTNAME=host.docker.internal \
-    ghcr.io/shortishly/pgec:develop
+    ghcr.io/shortishly/pgec:latest
 ```
-
-The replication process creates a transaction checkpoint ensuring data
-integrity. Once the initial data has been collected, streaming
-replication starts, receiving changes that have been applied
-subsequent to the checkpoint, ensuring no loss of data. Real-time
-streaming replication continues keeping [pgec][shortishly-pgec] up to date.
 
 ## In Memory Database Replication Cache
 
-[pgec][shortishly-pgec] is a real-time in memory database replication cache, with a
-[memcached][memcached-org] and REST API.
+On startup `pgec` will initiate a process to replicate the existing
+data in the publications. The replication process creates a
+transaction checkpoint ensuring data integrity. Once the initial data
+has been collected, streaming replication starts, receiving changes
+that have been applied subsequent to the checkpoint, ensuring no loss
+of data. Real-time streaming replication continues keeping
+[pgec][shortishly-pgec] up to date.
 
+[pgec][shortishly-pgec] is a real-time in memory database replication
+cache, with a [memcached][memcached-org] and REST API.
 
 ### memcached
 
