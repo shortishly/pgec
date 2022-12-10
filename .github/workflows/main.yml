@@ -46,7 +46,7 @@ jobs:
           path: logs
       - name: Beam Docker Release
         id: beam-docker-release
-        uses: shortishly/beam-docker-release-action@aae296d888c8dc322ebb6b38648228d1f39333da
+        uses: shortishly/beam-docker-release-action@9a4a971cfdfb623343e0c14d18c0ce7a64d96cf7
         with:
           registry: ${{env.registry}}
           username: ${{github.actor}}
