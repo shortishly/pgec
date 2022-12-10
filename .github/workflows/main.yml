@@ -60,5 +60,5 @@ jobs:
         uses: snyk/actions/docker@0.3.0
         env:
           SNYK_TOKEN: ${{secrets.SNYK_TOKEN}}
-          with:
-            image: ${{steps.beam-docker-release.docker-image-tags}}
+        with:
+          image: ${{steps.beam-docker-release.docker-image-tags}}
