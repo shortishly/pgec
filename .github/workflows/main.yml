@@ -63,6 +63,8 @@ jobs:
         name: digest
       - run: echo "${{steps.bdr.outputs.metadata}}"
         name: metadata
+      - run: echo "${{steps.bdr.outputs.metadata.image.name}}"
+        name: metadata.image.name
       - name: Vulnerability Scan
         uses: snyk/actions/docker@0.3.0
         env:
