@@ -57,11 +57,11 @@ jobs:
             pgec is a real-time in memory database replication cache,
             with a memcached and REST API.
           image-licenses: Apache-2.0
-      - run: echo ${{steps.bdr.outputs.imageid}}
+      - run: echo "${{steps.bdr.outputs.imageid}}"
         name: imageid
-      - run: echo ${{steps.bdr.outputs.digest}}
+      - run: echo "${{steps.bdr.outputs.digest}}"
         name: digest
-      - run: echo ${{steps.bdr.outputs.metadata}}
+      - run: echo "${{steps.bdr.outputs.metadata}}"
         name: metadata
       - name: Vulnerability Scan
         uses: snyk/actions/docker@0.3.0
