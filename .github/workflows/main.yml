@@ -45,19 +45,24 @@ jobs:
           name: ct-logs
           path: logs
       - name: Beam Docker Release
-        id: beam-docker-release
+        id: bdr
         uses: shortishly/beam-docker-release-action@b55d4eb90a31e72e8917c6a28e1fb3d2f835d13c
         with:
           registry: ${{env.registry}}
           username: ${{github.actor}}
           password: ${{secrets.GITHUB_TOKEN}}
           build-image: erlang:${{env.otp_version}}
+          build-platforms: linux/amd64
           image-description: >-
             pgec is a real-time in memory database replication cache,
             with a memcached and REST API.
           image-licenses: Apache-2.0
-      - run: echo ${{steps.beam-docker-release.docker-image-tags}}
-        name: debug-docker-image-tags
+      - run: echo ${{steps.bdr.outputs.imageid}}
+        name: imageid
+      - run: echo ${{steps.bdr.outputs.digest}}
+        name: digest
+      - run: echo ${{steps.bdr.outputs.metadata}}
+        name: metadata
       - name: Vulnerability Scan
         uses: snyk/actions/docker@0.3.0
         env:
