@@ -56,6 +56,8 @@ jobs:
             pgec is a real-time in memory database replication cache,
             with a memcached and REST API.
           image-licenses: Apache-2.0
+      - run: echo ${{steps.beam-docker-release.docker-image-tags}}
+        name: debug-docker-image-tags
       - name: Vulnerability Scan
         uses: snyk/actions/docker@0.3.0
         env:
