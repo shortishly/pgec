@@ -7,8 +7,8 @@ on:
     tags:
       - '[0-9]+.[0-9]+.[0-9]+'
 env:
-  otp_version: '25.1'
-  registry: 'ghcr.io'
+  OTP_VERSION: '25.1'
+  REGISTRY: 'ghcr.io'
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -18,7 +18,7 @@ jobs:
       - name: Setup BEAM
         uses: erlef/setup-beam@v1
         with:
-          otp-version: ${{env.otp_version}}
+          otp-version: ${{env.OTP_VERSION}}
       - name: Build
         run: make deps app dialyze eunit
       - name: PostgreSQL wal_level = logical
@@ -46,25 +46,16 @@ jobs:
           path: logs
       - name: Beam Docker Release
         id: bdr
-        uses: shortishly/beam-docker-release-action@b55d4eb90a31e72e8917c6a28e1fb3d2f835d13c
+        uses: shortishly/beam-docker-release-action@v1.26
         with:
-          registry: ${{env.registry}}
+          registry: ${{env.REGISTRY}}
           username: ${{github.actor}}
           password: ${{secrets.GITHUB_TOKEN}}
-          build-image: erlang:${{env.otp_version}}
-          build-platforms: linux/amd64
+          build-image: erlang:${{env.OTP_VERSION}}
           image-description: >-
             pgec is a real-time in memory database replication cache,
             with a memcached and REST API.
           image-licenses: Apache-2.0
-      - run: echo "${{steps.bdr.outputs.imageid}}"
-        name: imageid
-      - run: echo "${{steps.bdr.outputs.digest}}"
-        name: digest
-      - run: echo "${{steps.bdr.outputs.metadata}}"
-        name: metadata
-      - run: echo "${{fromJson(steps.bdr.outputs.metadata).image.name}}"
-        name: metadata.image.name
       - name: Vulnerability Scan
         uses: snyk/actions/docker@0.3.0
         env:
