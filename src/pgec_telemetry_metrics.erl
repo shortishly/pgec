@@ -1,4 +1,4 @@
-%% Copyright (c) 2022 Peter Morgan <peter.james.morgan@gmail.com>
+%% Copyright (c) 2023 Peter Morgan <peter.james.morgan@gmail.com>
 %%
 %% Licensed under the Apache License, Version 2.0 (the "License");
 %% you may not use this file except in compliance with the License.
@@ -13,24 +13,14 @@
 %% limitations under the License.
 
 
--module(pgec_metadata).
+-module(pgec_telemetry_metrics).
 
 
--export([callback_mode/0]).
--export([init/1]).
--export([start_link/0]).
+-export([handle/4]).
+-include_lib("kernel/include/logger.hrl").
 
-
-start_link() ->
-    gen_statem:start_link({local, ?MODULE},
-                          ?MODULE,
-                          [],
-                          envy_gen:options(?MODULE)).
-
-
-callback_mode() ->
-    handle_event_function.
-
-
-init([]) ->
-    {ok, ready, #{metadata => ets:new(?MODULE, [public, named_table])}}.
+handle(EventName, Measurements, Metadata, Config) ->
+    ?LOG_INFO(#{event_name => EventName,
+                measurements => Measurements,
+                metadata => Metadata,
+                config => Config}).

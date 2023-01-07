@@ -36,7 +36,8 @@ configuration() ->
 
 
 children() ->
-    [worker(pgec_metadata) |
+    [worker(pgec_telemetry),
+     worker(pgec_metadata) |
      lists:map(
        fun
            (Publication) ->

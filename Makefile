@@ -23,8 +23,10 @@ RELX_TAR = 0
 
 DEPS = \
 	cowboy \
+	cowboy_telemetry \
 	jsx \
 	mcd \
+	metrics \
 	pgmp
 
 SHELL_DEPS = \
@@ -39,14 +41,18 @@ SHELL_OPTS = \
 	-s sync \
 	+pc unicode
 
+dep_cowboy_telemetry = git https://github.com/beam-telemetry/cowboy_telemetry.git
 dep_mcd = git https://github.com/shortishly/mcd.git
+dep_metrics = git https://github.com/shortishly/metrics.git
 dep_pgmp = git https://github.com/shortishly/pgmp.git
 
 
 dep_cowboy_commit = 2.9.0
+dep_cowboy_telemetry_commit = v0.4.0
 dep_jsx_commit = v3.1.0
-dep_mcd_commit = 0.1.2
-dep_pgmp_commit = 0.8.1
+dep_mcd_commit = 0.4.0
+dep_metrics_commit = 0.1.0
+dep_pgmp_commit = 0.10.0
 
 
 PLT_APPS = \
@@ -69,6 +75,7 @@ PLT_APPS = \
 	ssl \
 	stdlib \
 	syntax_tools \
+	telemetry \
 	tools \
 	xmerl
 
