@@ -24,6 +24,7 @@ docker run \
     --name postgres \
     --detach \
     --publish 5432:5432 \
+    --pull always \
     --env POSTGRES_PASSWORD=postgres \
     postgres:15 \
     -c wal_level=logical
@@ -72,6 +73,7 @@ docker run \
     --name pgec \
     --publish 8080:80 \
     --publish 11211:11211 \
+    --pull always \
     -e PGMP_REPLICATION_LOGICAL_PUBLICATION_NAMES=pub \
     -e PGMP_DATABASE_USER=postgres \
     -e PGMP_DATABASE_PASSWORD=postgres \
