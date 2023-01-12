@@ -13,7 +13,6 @@ subsequent to the checkpoint, ensuring no loss of data. Streaming
 replication continues keeping [pgec][shortishly-pgec] up to date in
 real-time.
 
-
 ![main](https://github.com/shortishly/pgmp/actions/workflows/main.yml/badge.svg)
 
 A simple example, with a local `postgres` via `docker` to demonstrate
@@ -113,6 +112,17 @@ VALUE pub.xy.1 0 17
 END
 ```
 
+Or, using the [node client][memcached-npmjs-client]:
+
+```javascript
+var Memcached = require('memcached');
+var memcached = new Memcached('127.0.0.1:11211');
+
+memcached.get('pub.xy.1', function (err, data) {
+    console.log(data);
+});
+```
+
 ### REST
 
 Taking a look at the `xy` table via the JSON API:
@@ -120,6 +130,9 @@ Taking a look at the `xy` table via the JSON API:
 ```shell
 curl http://localhost:8080/pub/xy
 ```
+
+Will return:
+
 ```json
 {"rows": [{"x": 1, "y": "foo"},
           {"x": 2, "y": "bar"},
@@ -143,6 +156,9 @@ replication to the `pgec` cache:
 ```shell
 curl http://localhost:8080/pub/xy
 ```
+
+Will return:
+
 ```json
 {"rows": [{"x": 5, "y": "pqr"},
           {"x": 1, "y": "foo"},
@@ -156,12 +172,13 @@ To request the value for key `2`:
 ```shell
 curl http://localhost:8080/pub/xy/2
 ```
+
+Will return:
+
 ```json
 {"x":2,"y":"bar"}
 ```
 
-
+[memcached-npmjs-client]: https://www.npmjs.com/package/memcached
 [memcached-org]: https://memcached.org/
-[shortishly-log-rep-fifteen]: https://shortishly.com/blog/pgmp-log-rep-postgresql-fifteen/
-[shortishly-memcached]: https://shortishly.com/blog/mcd-emulating-memcached-with-statem-and-socket/
 [shortishly-pgec]: https://shortishly.com/blog/postgresql-edge-cache/
