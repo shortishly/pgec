@@ -20,6 +20,36 @@
 -include_lib("kernel/include/logger.hrl").
 
 
+handle([pgmp, mm, rep, _] = EventName,
+       #{wal := WAL} = Measurements,
+       #{identify_system := #{<<"dbname">> := DBName,
+                              <<"systemid">> := SystemId}} = Metadata,
+       Config) ->
+
+    ?LOG_DEBUG(#{event_name => EventName,
+                 measurements => Measurements,
+                 metadata => Metadata,
+                 config => Config}),
+
+    Prefix = lists:sublist(EventName, 3),
+
+    Label = maps:merge(
+              #{dbname => DBName, systemid => SystemId},
+              maps:with([publication], Metadata)),
+
+    metrics:gauge(
+      maps:fold(
+        fun
+            (WALMetricName, Value, A) ->
+                [#{name => pgec_util:snake_case(Prefix ++ [wal, WALMetricName]),
+                   label => Label,
+                   value => Value} | A]
+        end,
+        [],
+        WAL)),
+    metrics:counter(
+      mm_rep_count(EventName, Measurements, Metadata, Config, Label));
+
 handle([pgmp, mm, Action, stop] = EventName,
        #{duration := Duration},
        #{args := #{sql := SQL}}, _)
@@ -30,9 +60,13 @@ handle([pgmp, mm, Action, stop] = EventName,
       [#{name => pgec_util:snake_case(Prefix ++ [count]),
          label => #{sql => SQL},
          delta => 1},
-       #{name => pgec_util:snake_case(Prefix ++ [duration]),
+
+       #{name => pgec_util:snake_case(Prefix ++ [duration, ms]),
          label => #{sql => SQL},
-         delta => Duration}]);
+         delta => erlang:convert_time_unit(
+                    Duration,
+                    native,
+                    millisecond)}]);
 
 handle([pgmp, mm, execute, stop] = EventName,
        #{duration := Duration, rows := Rows},
@@ -48,20 +82,28 @@ handle([pgmp, mm, execute, stop] = EventName,
          label => maps:with([command], Metadata),
          delta => Rows},
 
-       #{name => pgec_util:snake_case(Prefix ++ [duration]),
+       #{name => pgec_util:snake_case(Prefix ++ [duration, ms]),
          label => maps:with([command], Metadata),
-         delta => Duration}]);
+         delta => erlang:convert_time_unit(
+                    Duration,
+                    native,
+                    millisecond)}]);
 
 handle([pgmp, mm, Action, stop] = EventName,
        #{duration := Duration},
        _,
        _)
   when Action == bind;
-       Action == describe->
+       Action == describe ->
     Prefix = lists:sublist(EventName, 3),
     metrics:counter(
       [#{name => pgec_util:snake_case(Prefix ++ [count]), delta => 1},
-       #{name => pgec_util:snake_case(Prefix ++ [duration]), delta => Duration}]);
+
+       #{name => pgec_util:snake_case(Prefix ++ [duration, ms]),
+         delta => erlang:convert_time_unit(
+                    Duration,
+                    native,
+                    millisecond)}]);
 
 handle([pgmp, mm, _, start], _, _, _) ->
     ok;
@@ -94,3 +136,21 @@ handle(EventName, Measurements, Metadata, Config) ->
                 measurements => Measurements,
                 metadata => Metadata,
                 config => Config}).
+
+
+mm_rep_count(EventName, #{count := N}, #{relations := Relations}, _Config, Label) ->
+    lists:map(
+      fun
+          (Relation) ->
+              #{name => pgec_util:snake_case(EventName ++ [count]),
+                label => Label#{relation => Relation},
+                delta => N}
+      end,
+      Relations);
+
+mm_rep_count(EventName, #{count := N}, Metadata, _Config, Label) ->
+    #{name => pgec_util:snake_case(EventName ++ [count]),
+      label => maps:merge(
+                 maps:with([relation], Metadata),
+                 Label),
+      delta => N}.

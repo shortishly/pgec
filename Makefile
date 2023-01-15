@@ -50,9 +50,9 @@ dep_pgmp = git https://github.com/shortishly/pgmp.git
 dep_cowboy_commit = 2.9.0
 dep_cowboy_telemetry_commit = v0.4.0
 dep_jsx_commit = v3.1.0
-dep_mcd_commit = 0.4.0
+dep_mcd_commit = 0.5.0
 dep_metrics_commit = 0.2.0
-dep_pgmp_commit = 0.10.0
+dep_pgmp_commit = 0.11.0
 
 
 PLT_APPS = \
