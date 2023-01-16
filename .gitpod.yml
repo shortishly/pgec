@@ -1,0 +1,6 @@
+---
+image: erlang:25.2
+vscode:
+  extensions:
+    - ms-vscode.cpptools
+    - erlang-ls.erlang-ls
