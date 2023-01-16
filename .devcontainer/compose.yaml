@@ -5,7 +5,7 @@ services:
     ports:
       - 9090:9090
     volumes:
-      - ./example/prometheus.yml:/etc/prometheus/prometheus.yml
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml
     pull_policy:
       always
   postgres:
@@ -20,7 +20,7 @@ services:
       - 5432:5432
     volumes:
       - db:/var/lib/postgresql/data
-      - ./example/init.sql:/docker-entrypoint-initdb.d/create_tables.sql
+      - ./init.sql:/docker-entrypoint-initdb.d/create_tables.sql
     healthcheck:
       test: /usr/bin/pg_isready
       interval: 5s

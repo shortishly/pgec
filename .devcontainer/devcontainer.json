@@ -1,0 +1,6 @@
+{
+    "name": "pgec",
+    "dockerComposeFile": "compose.yaml",
+    "service": "pgec",
+    "remoteUser": "vscode"
+}
