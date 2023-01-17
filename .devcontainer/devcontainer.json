@@ -1,6 +1,15 @@
 {
     "name": "pgec",
-    "dockerComposeFile": "compose.yaml",
-    "service": "pgec",
-    "remoteUser": "vscode"
+
+    "dockerFile": "Dockerfile",
+
+    "postStartCommand": "docker compose up -d",
+
+    "features": {
+        "ghcr.io/devcontainers/features/sshd:1": {},
+
+        "ghcr.io/devcontainers/features/common-utils:2": {},
+
+        "ghcr.io/devcontainers/features/docker-in-docker:2": {}
+    }
 }

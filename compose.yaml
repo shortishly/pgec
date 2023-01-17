@@ -28,22 +28,6 @@ services:
       retries: 5
     pull_policy:
       always
-  pgec:
-    image:
-      ghcr.io/shortishly/pgec:develop
-    environment:
-      PGMP_REPLICATION_LOGICAL_PUBLICATION_NAMES: pub
-      PGMP_DATABASE_USER: postgres
-      PGMP_DATABASE_PASSWORD: postgres
-      PGMP_DATABASE_HOSTNAME: postgres
-    ports:
-      - 8080:80
-      - 9100:9100
-      - 11211:11211
-    links:
-      - postgres
-    pull_policy:
-      always
 volumes:
   db:
     driver: local
