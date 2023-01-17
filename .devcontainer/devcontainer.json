@@ -5,6 +5,12 @@
 
     "postStartCommand": "docker compose up -d",
 
+    "forwardPorts": [5432,
+                     8080,
+                     9090,
+                     9100,
+                     11211],
+
     "features": {
         "ghcr.io/devcontainers/features/sshd:1": {},
 
