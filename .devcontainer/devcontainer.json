@@ -3,7 +3,29 @@
 
     "dockerFile": "Dockerfile",
 
-    "postStartCommand": "docker compose up -d",
+    "postStartCommand": "docker compose --profile db --profile monitoring up -d",
+
+    "containerEnv": {
+        "PGMP_DATABASE_USER": "postgres",
+        "PGMP_DATABASE_PASSWORD": "postgres"
+    },
+
+    "hostRequirements": {
+        "cpus": 2,
+        "memory": "4gb",
+        "storage": "32gb"
+    },
+
+    "customizations": {
+        "codespaces": {
+            "openFiles": [
+                "README.md",
+                "Makefile",
+                "src/pgec_app.erl",
+                "src/pgec_sup.erl"
+            ]
+        }
+    },
 
     "forwardPorts": [5432,
                      8080,

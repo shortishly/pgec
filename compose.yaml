@@ -1,16 +1,21 @@
+---
 services:
   prometheus:
     image:
-      prom/prometheus
+      prom/prometheus:${PGEC_VERSION:-latest}
     ports:
       - 9090:9090
-    volumes:
-      - ./example/prometheus.yml:/etc/prometheus/prometheus.yml
+    configs:
+      - source: prometheus_yml
+        target: /etc/prometheus/prometheus.yml
     pull_policy:
       always
+    profiles:
+      - monitoring
+      - all
   postgres:
     image:
-      postgres:15
+      postgres:${POSTGRES_VERSION:-15}
     environment:
       PGUSER: postgres
       POSTGRES_PASSWORD: postgres
@@ -20,7 +25,12 @@ services:
       - 5432:5432
     volumes:
       - db:/var/lib/postgresql/data
-      - ./example/init.sql:/docker-entrypoint-initdb.d/create_tables.sql
+      - type: bind
+        source: example/initdb.d/
+        target: /docker-entrypoint-initdb.d/
+      - type: bind
+        source: example/data
+        target: /mnt
     healthcheck:
       test: /usr/bin/pg_isready
       interval: 5s
@@ -28,9 +38,12 @@ services:
       retries: 5
     pull_policy:
       always
+    profiles:
+      - db
+      - all
   pgec:
     image:
-      ghcr.io/shortishly/pgec:develop
+      ghcr.io/shortishly/pgec:${PGEC_VERSION:-latest}
     environment:
       PGMP_REPLICATION_LOGICAL_PUBLICATION_NAMES: pub
       PGMP_DATABASE_USER: postgres
@@ -44,6 +57,12 @@ services:
       - postgres
     pull_policy:
       always
+    profiles:
+      - cache
+      - all
+configs:
+  prometheus_yml:
+    file: example/prometheus.yml
 volumes:
   db:
     driver: local

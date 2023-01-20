@@ -177,7 +177,9 @@ key(#{keys := Positions, oids := Types}, #{bindings := #{key := Encoded}}) ->
 
         [KeyOID] ->
             ?LOG_DEBUG(#{key_oid => keyOID}),
-            [Decoded] = pgmp_data_row:decode(#{}, [{#{format => text, type_oid => KeyOID}, Encoded}]),
+            [Decoded] = pgmp_data_row:decode(
+                   #{<<"client_encoding">> => <<"UTF8">>},
+                   [{#{format => text, type_oid => KeyOID}, Encoded}]),
             Decoded
     end.
 
