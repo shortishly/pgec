@@ -39,5 +39,5 @@ counter(#{name := EventName} = Arg) ->
 
     catch
         error:badarg ->
-            ?LOG_WARNING(Arg)
+            ?LOG_NOTICE(Arg#{note => "this observation was dropped"})
     end.

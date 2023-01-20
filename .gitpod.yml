@@ -1,0 +1,4 @@
+---
+image: erlang:25.2
+tasks:
+  - init: make

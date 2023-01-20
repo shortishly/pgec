@@ -97,7 +97,7 @@ key(#{keys := Positions, oids := Types} = Metadata, #{key := Encoded} = PTK) ->
         [KeyOID] ->
             ?LOG_DEBUG(#{key_oid => keyOID}),
             [Decoded] = pgmp_data_row:decode(
-                          #{},
+                          #{<<"client_encoding">> => <<"UTF8">>},
                           [{#{format => text, type_oid => KeyOID}, Encoded}]),
             Decoded
     end.

@@ -19,6 +19,36 @@
 -export([handle/4]).
 -include_lib("kernel/include/logger.hrl").
 
+handle([cowboy, request, start], _Measurements, _Metadata, _Config) ->
+    ok;
+
+handle([cowboy, request, stop] = EventName,
+       Measurements,
+       #{req := Req},
+       _Config) ->
+    Prefix = lists:sublist(EventName, 2),
+    Label = maps:with([host, port], Req),
+    metrics:counter(
+      maps:fold(
+        fun
+            (duration = Metric, Delta, A) ->
+                [#{name => pgec_util:snake_case(Prefix ++ [Metric, ms]),
+                   label => Label,
+                   delta => erlang:convert_time_unit(
+                              Delta,
+                              native,
+                              millisecond)} | A];
+
+            (Metric, Delta, A) ->
+                [#{name => pgec_util:snake_case(Prefix ++ [Metric]),
+                   label => Label,
+                   delta => Delta} | A]
+        end,
+        [#{name => pgec_util:snake_case(Prefix ++ [count]),
+           label => Label,
+           delta => 1}],
+        Measurements));
+
 handle(EventName, Measurements, Metadata, Config) ->
     ?LOG_INFO(#{event_name => EventName,
                 measurements => Measurements,
