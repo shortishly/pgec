@@ -12,7 +12,7 @@ logs
 .erlang.mk
 db
 xrefr
-*.d
+pgec.d
 elvis
 elvis.config
 .fuse_hidden*
