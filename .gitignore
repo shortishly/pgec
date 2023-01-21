@@ -21,3 +21,5 @@ cover
 *#
 .#*
 *.log
+Dockerfile
+beam-docker-release-action

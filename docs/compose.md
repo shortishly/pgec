@@ -22,8 +22,15 @@ docker compose exec postgres psql postgres postgres
 To bring all services up:
 
 ```shell
-docker compose --profile all up -d
+docker compose \
+       --profile all \
+       up \
+       --detach \
+       --remove-orphans
 ```
+
+The database will be populated with data loaded from the scripts in
+this [directory](../example/initdb.d).
 
 To check that all services are running OK:
 
@@ -31,11 +38,44 @@ To check that all services are running OK:
 docker compose --profile all ps
 ```
 
-The database will use a persistent volume called "pgec_db", if you
-want to recreate from scratch:
+You can check cached data in pgec with:
+
+```shell
+curl http://localhost:8080/pub/world_cup_teams_2022/Liberia
+{"country": "Liberia",
+ "fifth": "Spain",
+ "fourth": "Brazil",
+ "second": "Argentina",
+ "third": "Portugal",
+ "top_searched": "Qatar"}
+```
+
+and:
+
+```shell
+curl http://localhost:8080/pub/xy
+{"rows": [{"x":1,"y":"foo"},
+          {"x":2,"y":"bar"},
+          {"x":4,"y":"boo"},
+          {"x":3,"y":"baz"}]}
+
+```
+
+The database uses a persistent volume called "pgec_db", which can be
+removed with:
 
 ```shell
 docker volume rm pgec_db
+```
+
+To bring all services down and remove the persistent DB volume:
+
+```shell
+docker compose \
+       --profile all \
+       down \
+       --remove-orphans \
+       --volumes              
 ```
 
 [compose-spec-io]: https://compose-spec.io
