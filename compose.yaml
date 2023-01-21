@@ -41,6 +41,13 @@ services:
     profiles:
       - db
       - all
+  erlang:
+    image:
+      erlang:${ERLANG_VERSION:-21.2}
+    command:
+      /bin/sh -c "while sleep 1000; do :; done"
+    profiles:
+      - debug
   pgec:
     image:
       ghcr.io/shortishly/pgec:${PGEC_VERSION:-latest}
@@ -48,11 +55,9 @@ services:
       PGMP_DATABASE_HOSTNAME: postgres
       PGMP_DATABASE_PASSWORD: postgres
       PGMP_DATABASE_USER: postgres
-      PGMP_INT_SUP_RESTART_INTENSITY: 60
-      PGMP_INT_SUP_RESTART_PERIOD: 1
+      PGMP_PGMP_INT_SUP_RESTART_INTENSITY: 60
+      PGMP_PGMP_INT_SUP_RESTART_PERIOD: 1
       PGMP_PGMP_REP_LOG_STREAM_SUP_RESTART_INTENSITY: 60
-      PGMP_PGMP_REP_LOG_STREAM_SUP_RESTART_INTENSITY: 60
-      PGMP_PGMP_REP_LOG_STREAM_SUP_RESTART_PERIOD: 1
       PGMP_PGMP_REP_LOG_STREAM_SUP_RESTART_PERIOD: 1
       PGMP_REPLICATION_LOGICAL_PUBLICATION_NAMES: pub
       PGMP_SOCKET_TRACE: false
