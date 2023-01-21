@@ -2,7 +2,7 @@
 services:
   prometheus:
     image:
-      prom/prometheus:${PGEC_VERSION:-latest}
+      prom/prometheus:${PROMETHEUS_VERSION:-latest}
     ports:
       - 9090:9090
     configs:
@@ -45,10 +45,17 @@ services:
     image:
       ghcr.io/shortishly/pgec:${PGEC_VERSION:-latest}
     environment:
-      PGMP_REPLICATION_LOGICAL_PUBLICATION_NAMES: pub
-      PGMP_DATABASE_USER: postgres
-      PGMP_DATABASE_PASSWORD: postgres
       PGMP_DATABASE_HOSTNAME: postgres
+      PGMP_DATABASE_PASSWORD: postgres
+      PGMP_DATABASE_USER: postgres
+      PGMP_INT_SUP_RESTART_INTENSITY: 60
+      PGMP_INT_SUP_RESTART_PERIOD: 1
+      PGMP_PGMP_REP_LOG_STREAM_SUP_RESTART_INTENSITY: 60
+      PGMP_PGMP_REP_LOG_STREAM_SUP_RESTART_INTENSITY: 60
+      PGMP_PGMP_REP_LOG_STREAM_SUP_RESTART_PERIOD: 1
+      PGMP_PGMP_REP_LOG_STREAM_SUP_RESTART_PERIOD: 1
+      PGMP_REPLICATION_LOGICAL_PUBLICATION_NAMES: pub
+      PGMP_SOCKET_TRACE: false
     ports:
       - 8080:80
       - 9100:9100
