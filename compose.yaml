@@ -43,7 +43,7 @@ services:
       - all
   erlang:
     image:
-      erlang:${ERLANG_VERSION:-21.2}
+      erlang:${ERLANG_VERSION:-25.2}
     command:
       /bin/sh -c "while sleep 1000; do :; done"
     profiles:
