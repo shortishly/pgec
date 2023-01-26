@@ -74,7 +74,7 @@ gh codespace delete \
     --codespace $(gh codespace ls \
         --repo $(gh repo view \
             --json nameWithOwner \
-            --jq .nameWithOwner)
+            --jq .nameWithOwner) \
         --json name \
         --jq '.[].name')
 ```

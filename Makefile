@@ -44,7 +44,7 @@ SHELL_OPTS = \
 dep_cowboy_telemetry = git https://github.com/beam-telemetry/cowboy_telemetry.git
 dep_mcd = git https://github.com/shortishly/mcd.git
 dep_metrics = git https://github.com/shortishly/metrics.git
-dep_pgmp = git https://github.com/shortishly/pgmp.git
+dep_pgmp = git ../pgmp
 
 
 dep_cowboy_commit = 2.9.0
@@ -52,7 +52,7 @@ dep_cowboy_telemetry_commit = v0.4.0
 dep_jsx_commit = v3.1.0
 dep_mcd_commit = 0.5.0
 dep_metrics_commit = 0.2.0
-dep_pgmp_commit = 0.14.0
+dep_pgmp_commit = develop
 
 
 PLT_APPS = \

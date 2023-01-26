@@ -36,7 +36,13 @@ callback_mode() ->
 init([Arg]) ->
     {ok,
      ready,
-     Arg#{requests => gen_statem:reqids_new()}, nei(get_members)}.
+     Arg#{requests => gen_statem:reqids_new()},
+     [nei(join), nei(get_members)]}.
+
+
+handle_event(internal, join, _, #{publication := Publication}) ->
+    pgmp_pg:join([pgmp_rep_log_ets, Publication, notifications]),
+    keep_state_and_data;
 
 handle_event(internal, get_members, _, #{publication := Publication}) ->
     {keep_state_and_data,
