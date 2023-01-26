@@ -40,6 +40,9 @@ init([Arg]) ->
      [nei(join), nei(get_members)]}.
 
 
+handle_event({call, _}, {notify, _}, ready, _) ->
+    {keep_state_and_data, nei(get_members)};
+
 handle_event(internal, join, _, #{publication := Publication}) ->
     pgmp_pg:join([pgmp_rep_log_ets, Publication, notifications]),
     keep_state_and_data;
@@ -83,7 +86,7 @@ handle_event(
   {response, #{label := #{f := metadata}, reply := Metadata}},
   _,
   #{publication := Publication}) ->
-    ets:insert_new(
+    ets:insert(
       pgec_metadata,
       maps:fold(
         fun
