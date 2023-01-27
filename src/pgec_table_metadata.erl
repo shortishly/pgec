@@ -114,10 +114,8 @@ handle_event(info, Msg, _, #{requests := Existing} = Data) ->
              Data#{requests := Updated},
              nei({response, #{label => Label, reply => Reply}})};
 
-        {{error, {normal, _}}, #{f := when_ready}, UpdatedRequests} ->
-            {stop,
-             normal,
-             Data#{requests := UpdatedRequests}};
+        {{error, {Reason, _}}, #{f := when_ready}, UpdatedRequests} ->
+            {stop, Reason, Data#{requests := UpdatedRequests}};
 
         {{error, {Reason, ServerRef}}, Label, UpdatedRequests} ->
                 {stop,
