@@ -20,6 +20,7 @@
 -export([handle_event/4]).
 -export([init/1]).
 -export([start_link/1]).
+-export([terminate/3]).
 -import(pgec_statem, [nei/1]).
 
 
@@ -125,3 +126,10 @@ handle_event(info, Msg, _, #{requests := Existing} = Data) ->
                    label => Label},
                  Data#{requests := UpdatedRequests}}
     end.
+
+
+terminate(_Reason, _State, #{publication := Publication}) ->
+    pgmp_pg:leave([pgmp_rep_log_ets, Publication, notifications]);
+
+terminate(_Reason, _State, _Data) ->
+    ok.
