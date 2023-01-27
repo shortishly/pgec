@@ -9,7 +9,7 @@ services:
       - source: prometheus_yml
         target: /etc/prometheus/prometheus.yml
     pull_policy:
-      always
+      ${PULL_POLICY:-missing}
     profiles:
       - monitoring
       - all
@@ -37,7 +37,7 @@ services:
       timeout: 10s
       retries: 5
     pull_policy:
-      always
+      ${PULL_POLICY:-missing}
     profiles:
       - db
       - all
@@ -46,11 +46,13 @@ services:
       erlang:${ERLANG_VERSION:-25.2}
     command:
       /bin/sh -c "while sleep 1000; do :; done"
+    pull_policy:
+      ${PULL_POLICY:-missing}
     profiles:
       - debug
   pgec:
     image:
-      ghcr.io/shortishly/pgec:${PGEC_VERSION:-latest}
+      ${PGEC_IMAGE:-ghcr.io/shortishly/pgec:${PGEC_VERSION:-latest}}
     environment:
       PGMP_DATABASE_HOSTNAME: postgres
       PGMP_DATABASE_PASSWORD: postgres
@@ -68,7 +70,7 @@ services:
     links:
       - postgres
     pull_policy:
-      always
+      ${PULL_POLICY:-always}
     profiles:
       - cache
       - all

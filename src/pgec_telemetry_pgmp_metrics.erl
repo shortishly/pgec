@@ -65,10 +65,16 @@ handle([pgmp, mm, rep, _] = EventName,
 %% parse and query, to include the SQL being processed
 %%
 handle([pgmp, mm, Action, stop] = EventName,
-       #{duration := Duration},
-       #{args := #{sql := SQL}}, _)
+       #{duration := Duration} = Measurements,
+       #{args := #{sql := SQL}} = Metadata,
+       Config)
   when Action == parse;
        Action == query ->
+    ?LOG_DEBUG(#{event_name => EventName,
+                 measurements => Measurements,
+                 metadata => Metadata,
+                 config => Config}),
+
     Prefix = lists:sublist(EventName, 3),
 
     %% Maintain a count of each action processed with their cumulative
@@ -91,9 +97,14 @@ handle([pgmp, mm, Action, stop] = EventName,
 %% execute to include the numnber of rows that were returned
 %%
 handle([pgmp, mm, execute, stop] = EventName,
-       #{duration := Duration, rows := Rows},
+       #{duration := Duration, rows := Rows} = Measurements,
        Metadata,
-       _) ->
+       Config) ->
+    ?LOG_DEBUG(#{event_name => EventName,
+                 measurements => Measurements,
+                 metadata => Metadata,
+                 config => Config}),
+
     Prefix = lists:sublist(EventName, 3),
     metrics:counter(
       [#{name => pgec_util:snake_case(Prefix ++ [count]),
@@ -116,11 +127,16 @@ handle([pgmp, mm, execute, stop] = EventName,
 %% describe.
 %%
 handle([pgmp, mm, Action, stop] = EventName,
-       #{duration := Duration},
-       _,
-       _)
+       #{duration := Duration} = Measurements,
+       Metadata,
+       Config)
   when Action == bind;
        Action == describe ->
+    ?LOG_DEBUG(#{event_name => EventName,
+                 measurements => Measurements,
+                 metadata => Metadata,
+                 config => Config}),
+
     Prefix = lists:sublist(EventName, 3),
     metrics:counter(
       [#{name => pgec_util:snake_case(Prefix ++ [count]), delta => 1},
@@ -142,12 +158,17 @@ handle([pgmp, mm, _, start], _, _, _) ->
 %% level PostgreSQL protocol.
 %%
 handle([pgmp, socket, tag_msg] = EventName,
-       #{bytes := Bytes, count := N},
+       #{bytes := Bytes, count := N} = Measurements,
        Metadata,
-       _) ->
+       Config) ->
     %% Maintain a count of each tagged message with the cumulative
     %% bytes processed.
     %%
+    ?LOG_DEBUG(#{event_name => EventName,
+                 measurements => Measurements,
+                 metadata => Metadata,
+                 config => Config}),
+
     metrics:counter(
       [#{name => pgec_util:snake_case(EventName ++ [count]),
          label => maps:with([tag], Metadata),
@@ -161,7 +182,11 @@ handle([pgmp, socket, tag_msg] = EventName,
 %% This generic clause catches any other telemetry from pgmp that
 %% includes the number of bytes that were processed.
 %%
-handle(EventName, #{bytes := N}, _, _) ->
+handle(EventName, #{bytes := N} = Measurements, Metadata, Config) ->
+    ?LOG_DEBUG(#{event_name => EventName,
+                 measurements => Measurements,
+                 metadata => Metadata,
+                 config => Config}),
     metrics:counter(
       #{name => pgec_util:snake_case(EventName ++ [bytes]),
         delta => N});
@@ -170,7 +195,11 @@ handle(EventName, #{bytes := N}, _, _) ->
 %% This generic clause catches any other telemetry from pgmp that is a
 %% count.
 %%
-handle(EventName, #{count := N}, _, _) ->
+handle(EventName, #{count := N} = Measurements, Metadata, Config) ->
+    ?LOG_DEBUG(#{event_name => EventName,
+                 measurements => Measurements,
+                 metadata => Metadata,
+                 config => Config}),
     metrics:counter(
       #{name => pgec_util:snake_case(EventName ++ [count]),
         delta => N});
