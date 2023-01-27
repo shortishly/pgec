@@ -17,9 +17,31 @@
 
 
 -export([http/1]).
+-export([sup_flags/1]).
 -export([timeout/1]).
 -export([telemetry/1]).
 -import(envy, [envy/1]).
+
+
+sup_flags(Supervisor) ->
+    lists:foldl(
+      fun
+          (Name, A) ->
+              A#{Name => restart(Supervisor, Name)}
+      end,
+      #{},
+      [intensity, period]).
+
+
+restart(Supervisor, Name) when Name == intensity; Name == period ->
+    envy(#{caller => ?MODULE,
+           names => [Supervisor, ?FUNCTION_NAME, Name],
+           default => restart(Name)}).
+
+restart(intensity) ->
+    1;
+restart(period) ->
+    5.
 
 
 timeout(no_members = Name) ->

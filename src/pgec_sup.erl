@@ -32,7 +32,7 @@ init([]) ->
     {ok, configuration()}.
 
 configuration() ->
-    {#{}, children()}.
+    {pgec_config:sup_flags(?MODULE), children()}.
 
 
 children() ->
@@ -43,7 +43,6 @@ children() ->
            (Publication) ->
                worker(#{id => Publication,
                         m => pgec_table_metadata,
-                        restart => transient,
                         args => [#{publication => Publication}]})
        end,
        pgmp_config:replication(logical, publication_names))].
