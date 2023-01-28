@@ -7,7 +7,7 @@ on:
     tags:
       - '[0-9]+.[0-9]+.[0-9]+'
 env:
-  OTP_VERSION: '25.1'
+  OTP_VERSION: '25.2'
   REGISTRY: 'ghcr.io'
 jobs:
   build:
@@ -46,7 +46,7 @@ jobs:
           path: logs
       - name: Beam Docker Release
         id: bdr
-        uses: shortishly/beam-docker-release-action@v1.26
+        uses: shortishly/beam-docker-release-action@v1.28
         with:
           registry: ${{env.REGISTRY}}
           username: ${{github.actor}}

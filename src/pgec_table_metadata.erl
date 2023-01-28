@@ -20,6 +20,7 @@
 -export([handle_event/4]).
 -export([init/1]).
 -export([start_link/1]).
+-export([terminate/3]).
 -import(pgec_statem, [nei/1]).
 
 
@@ -36,7 +37,16 @@ callback_mode() ->
 init([Arg]) ->
     {ok,
      ready,
-     Arg#{requests => gen_statem:reqids_new()}, nei(get_members)}.
+     Arg#{requests => gen_statem:reqids_new()},
+     [nei(join), nei(get_members)]}.
+
+
+handle_event({call, _}, {notify, _}, ready, _) ->
+    {keep_state_and_data, nei(get_members)};
+
+handle_event(internal, join, _, #{publication := Publication}) ->
+    pgmp_pg:join([pgmp_rep_log_ets, Publication, notifications]),
+    keep_state_and_data;
 
 handle_event(internal, get_members, _, #{publication := Publication}) ->
     {keep_state_and_data,
@@ -77,7 +87,7 @@ handle_event(
   {response, #{label := #{f := metadata}, reply := Metadata}},
   _,
   #{publication := Publication}) ->
-    ets:insert_new(
+    ets:insert(
       pgec_metadata,
       maps:fold(
         fun
@@ -104,15 +114,13 @@ handle_event(info, Msg, _, #{requests := Existing} = Data) ->
              Data#{requests := Updated},
              nei({response, #{label => Label, reply => Reply}})};
 
-        {{error, {normal, _}}, #{f := when_ready}, UpdatedRequests} ->
-            {stop,
-             normal,
-             Data#{requests := UpdatedRequests}};
-
-        {{error, {Reason, ServerRef}}, Label, UpdatedRequests} ->
-                {stop,
-                 #{reason => Reason,
-                   server_ref => ServerRef,
-                   label => Label},
-                 Data#{requests := UpdatedRequests}}
+        {{error, {Reason, _}}, _, UpdatedRequests} ->
+            {stop, Reason, Data#{requests := UpdatedRequests}}
     end.
+
+
+terminate(_Reason, _State, #{publication := Publication}) ->
+    pgmp_pg:leave([pgmp_rep_log_ets, Publication, notifications]);
+
+terminate(_Reason, _State, _Data) ->
+    ok.
