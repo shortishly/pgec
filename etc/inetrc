@@ -1,2 +1,0 @@
-%% -*- mode: erlang -*-
-{lookup, [file, dns]}.
