@@ -7,7 +7,7 @@ on:
     tags:
       - '[0-9]+.[0-9]+.[0-9]+'
 env:
-  OTP_VERSION: '25.1'
+  OTP_VERSION: '25.2'
   REGISTRY: 'ghcr.io'
 jobs:
   build:
