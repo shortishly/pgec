@@ -25,7 +25,7 @@ start_link() ->
     gen_statem:start_link({local, ?MODULE},
                           ?MODULE,
                           [],
-                          pgec_config:options(?MODULE)).
+                          envy_gen:options(?MODULE)).
 
 
 callback_mode() ->

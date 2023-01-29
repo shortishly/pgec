@@ -32,17 +32,17 @@ init([]) ->
     {ok, configuration()}.
 
 configuration() ->
-    {#{}, children()}.
+    {pgec_config:sup_flags(?MODULE), children()}.
 
 
 children() ->
-    [worker(pgec_metadata) |
+    [worker(pgec_telemetry),
+     worker(pgec_metadata) |
      lists:map(
        fun
            (Publication) ->
                worker(#{id => Publication,
                         m => pgec_table_metadata,
-                        restart => transient,
                         args => [#{publication => Publication}]})
        end,
        pgmp_config:replication(logical, publication_names))].

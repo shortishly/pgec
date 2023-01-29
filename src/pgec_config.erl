@@ -17,87 +17,63 @@
 
 
 -export([http/1]).
--export([options/1]).
+-export([sup_flags/1]).
 -export([timeout/1]).
+-export([telemetry/1]).
+-import(envy, [envy/1]).
+
+
+sup_flags(Supervisor) ->
+    lists:foldl(
+      fun
+          (Name, A) ->
+              A#{Name => restart(Supervisor, Name)}
+      end,
+      #{},
+      [intensity, period]).
+
+
+restart(Supervisor, Name) when Name == intensity; Name == period ->
+    envy(#{caller => ?MODULE,
+           names => [Supervisor, ?FUNCTION_NAME, Name],
+           default => restart(Name)}).
+
+restart(intensity) ->
+    1;
+restart(period) ->
+    5.
 
 
 timeout(no_members = Name) ->
-    envy(to_integer_or_atom, [Name, timeout], timer:seconds(1));
+    envy(#{caller => ?MODULE,
+           type => integer_or_atom,
+           names => [Name, timeout],
+           default => timer:seconds(1)});
 
 timeout(Name) ->
-    envy(to_integer_or_atom, [Name, timeout], infinity).
+    envy(#{caller => ?MODULE,
+           type => integer_or_atom,
+           names => [Name, timeout],
+           default => infinity}).
 
 
 http(port = Name) ->
-    envy(to_integer, [?FUNCTION_NAME, Name], 80).
+    envy(#{caller => ?MODULE,
+           names => [?FUNCTION_NAME, Name],
+           default => 80}).
 
 
-options(M) ->
-    case debug_options(M, [log, trace]) of
-        [] ->
-            [];
+telemetry(Name) when Name == module; Name == function ->
+    envy(#{caller => ?MODULE,
+           type => atom,
+           names =>[?FUNCTION_NAME, Name]});
 
-        Options ->
-            [{debug, Options}]
-    end.
+telemetry(event_names = Name) ->
+    envy(#{caller => ?MODULE,
+           names => [?FUNCTION_NAME, Name],
+           default => filename:join(pgec:priv_dir(), "telemetry.terms")});
 
-
-debug_options(M, Options) ->
-    ?FUNCTION_NAME(M, Options, []).
-
-
-debug_options(M, [log = Option | Options], A) ->
-    case envy(to_boolean, [M, Option], false) of
-        true ->
-            try
-                ?FUNCTION_NAME(
-                   M,
-                   Options,
-                   [{log, envy(to_integer, [M, Option, n])} | A])
-            catch
-                error:badarg ->
-                    ?FUNCTION_NAME(
-                       M,
-                       Options,
-                       [log | A])
-
-            end;
-
-        false ->
-            ?FUNCTION_NAME(M, Options, A)
-    end;
-
-debug_options(M, [Option | Options], A) ->
-    ?FUNCTION_NAME(
-       M,
-       Options,
-       [Option || envy(to_boolean, [M, Option], false)] ++ A);
-
-debug_options(_, [], A) ->
-    A.
-
-
-envy(To, Names) ->
-    case envy:get_env(pgec, pgmp_util:snake_case(Names), [os_env, app_env]) of
-        undefined ->
-            error(badarg, [To, Names]);
-
-        Value ->
-            any:To(Value)
-    end.
-
-
-envy(To, Names, Default) ->
-    try
-        envy:To(pgec, pgec_util:snake_case(Names), default(Default))
-
-    catch
-        error:badarg ->
-            Default
-    end.
-
-
-default(Default) ->
-    %% Enable all configuration to be overriden by OS environment
-    %% variables, very useful for Docker.
-    [os_env, app_env, {default, Default}].
+telemetry(config = Name) ->
+    envy:get_env(pgec,
+                 pgmp_util:snake_case([?FUNCTION_NAME, Name]),
+                 [app_env, {default, []}]).

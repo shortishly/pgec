@@ -21,13 +21,16 @@
 -include_lib("stdlib/include/ms_transform.hrl").
 
 
+recv(#{message := #{command := quit}}) ->
+    stop;
+
 recv(#{message := #{command := get, keys := Keys}} = Arg) ->
     ?LOG_DEBUG(#{arg => Arg}),
     {continue,
      lists:foldl(
        fun
            (Key, A) ->
-               case lookup(ptk(Key)) of
+               try lookup(ptk(Key)) of
                    {ok, #{metadata := Metadata, row := Row}} ->
                        [{encode,
                          #{command => value,
@@ -38,10 +41,19 @@ recv(#{message := #{command := get, keys := Keys}} = Arg) ->
 
                    not_found ->
                        A
+               catch
+                   error:badarg ->
+                       A
                end
        end,
        [{encode, #{command => 'end'}}],
-       Keys)}.
+       Keys)};
+
+recv(#{message := #{command := Command}}) ->
+    {continue,
+     {encode,
+      #{command => client_error,
+        reason => io_lib:format("~p: not implemented", [Command])}}}.
 
 
 lookup(PTK) ->
@@ -84,7 +96,9 @@ key(#{keys := Positions, oids := Types} = Metadata, #{key := Encoded} = PTK) ->
 
         [KeyOID] ->
             ?LOG_DEBUG(#{key_oid => keyOID}),
-            [Decoded] = pgmp_data_row:decode(#{}, [{#{format => text, type_oid => KeyOID}, Encoded}]),
+            [Decoded] = pgmp_data_row:decode(
+                          #{<<"client_encoding">> => <<"UTF8">>},
+                          [{#{format => text, type_oid => KeyOID}, Encoded}]),
             Decoded
     end.
 
@@ -96,8 +110,13 @@ metadata(#{publication := Publication, table := Table} = Arg) ->
 
 ptk(PTK) ->
     ?LOG_DEBUG(#{ptk => PTK}),
-    [Publication, Table, Key] = string:split(PTK, ".", all),
-    #{publication => Publication, table => Table, key => Key}.
+    case string:split(PTK, ".", all) of
+        [Publication, Table, Key] ->
+            #{publication => Publication, table => Table, key => Key};
+
+        _Otherwise ->
+            error(badarg, [PTK])
+    end.
 
 
 row(#{columns := Columns, oids := OIDS}, Row) when is_tuple(element(1, Row)) ->

@@ -24,14 +24,15 @@
 
 start(_Type, _Args) ->
     {ok, _} = cowboy:start_clear(
-                http,
+                pgec,
                 [{port, pgec_config:http(port)}],
-                #{env => #{dispatch => dispatch()}}),
+                #{env => #{dispatch => dispatch()},
+                  stream_handlers => [cowboy_telemetry_h, cowboy_stream_h]}),
     {ok, _} = pgec_sup:start_link().
 
 
 prep_stop(State) ->
-    ok = cowboy:stop_listener(http),
+    ok = cowboy:stop_listener(pgec),
     State.
 
 

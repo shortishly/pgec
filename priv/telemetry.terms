@@ -1,5 +1,5 @@
 %% -*- mode: erlang -*-
-%% Copyright (c) 2022 Peter Morgan <peter.james.morgan@gmail.com>
+%% Copyright (c) 2023 Peter Morgan <peter.james.morgan@gmail.com>
 %%
 %% Licensed under the Apache License, Version 2.0 (the "License");
 %% you may not use this file except in compliance with the License.
@@ -13,10 +13,8 @@
 %% See the License for the specific language governing permissions and
 %% limitations under the License.
 
-{dev_mode, false}.
-{extended_start_script, true}.
-{include_erts, true}.
-{include_src, false}.
-{release, {pgec, "1"}, [pgec, sasl, runtime_tools]}.
-{sys_config, "config/sys.config"}.
-{vm_args, "config/vm.args"}.
+
+[cowboy, request, early_error].
+[cowboy, request, exception].
+[cowboy, request, start].
+[cowboy, request, stop].
