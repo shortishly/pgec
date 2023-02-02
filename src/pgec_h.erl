@@ -22,54 +22,18 @@
 -include_lib("stdlib/include/ms_transform.hrl").
 
 
-init(#{bindings := #{publication := Publication,
-                     table := Table,
-                     key := _}} = Req,
-     Opts) ->
+init(Req, Opts) ->
+    ?FUNCTION_NAME(Req, Opts, cowboy_req:path_info(Req)).
 
-    ?LOG_DEBUG(#{req => Req, opts => Opts}),
-
-    case ets:lookup(
-           pgec_metadata,
-           {Publication, Table}) of
-
-        [{_, Metadata}] ->
-            ?LOG_DEBUG(#{metadata => Metadata}),
-
-            case lookup(Metadata, Req) of
-                [Row] ->
-                    ContentType = negotiate_content_type(Req),
-
-                    {ok,
-                     cowboy_req:reply(
-                       200,
-                       headers(ContentType),
-                       [encode(
-                          ContentType,
-                          row(ContentType, Metadata, Row)),
-                        "\n"],
-                       Req),
-                     Opts};
-
-                [] ->
-                    {ok,
-                     not_found(Req,
-                               #{publication => Publication,
-                                 key => key(Metadata, Req),
-                                 table => Table}),
-                     Opts}
-            end;
-
-        [] ->
-            ?LOG_DEBUG(#{metadata => not_found}),
-            {ok, not_found(Req, #{publication => Publication, table => Table}), Opts}
-    end;
 
 init(#{bindings := #{publication := Publication,
                      table := Table}} = Req,
-     Opts) ->
+     Opts,
+     [] = Keys) ->
 
-    ?LOG_DEBUG(#{req => Req, opts => Opts}),
+    ?LOG_DEBUG(#{req => Req,
+                 opts => Opts,
+                 keys => Keys}),
 
     ContentType = negotiate_content_type(Req),
 
@@ -96,8 +60,56 @@ init(#{bindings := #{publication := Publication,
             {ok, not_found(Req), Opts}
     end;
 
-init(#{bindings := #{publication := Publication}} = Req, Opts) ->
-    ?LOG_DEBUG(#{req => Req, opts => Opts}),
+
+init(#{bindings := #{publication := Publication,
+                     table := Table}} = Req,
+     Opts,
+     Keys) ->
+
+    ?LOG_DEBUG(#{req => Req, opts => Opts, keys => Keys}),
+
+    case ets:lookup(
+           pgec_metadata,
+           {Publication, Table}) of
+
+        [{_, Metadata}] ->
+            ?LOG_DEBUG(#{metadata => Metadata}),
+
+            case lookup(Metadata, Req) of
+                [_] = Row ->
+                    ContentType = negotiate_content_type(Req),
+
+                    {ok,
+                     cowboy_req:reply(
+                       200,
+                       headers(ContentType),
+                       [encode(
+                          ContentType,
+                          hd(lists:foldl(
+                               row(ContentType, Metadata),
+                               [],
+                               Row))),
+                        "\n"],
+                       Req),
+                     Opts};
+
+                [] ->
+                    {ok,
+                     not_found(Req,
+                               #{publication => Publication,
+                                 key => key(Metadata, Req),
+                                 table => Table}),
+                     Opts}
+            end;
+
+        [] ->
+            ?LOG_DEBUG(#{metadata => not_found}),
+            {ok, not_found(Req, #{publication => Publication, table => Table}), Opts}
+    end;
+
+init(#{bindings := #{publication := Publication}} = Req,
+     Opts,
+     _) ->
 
     ContentType = negotiate_content_type(Req),
 
@@ -118,7 +130,7 @@ init(#{bindings := #{publication := Publication}} = Req, Opts) ->
        Req),
      Opts};
 
-init(Req, Opts) ->
+init(Req, Opts, _) ->
     ?LOG_DEBUG(#{req => Req, opts => Opts}),
 
     {ok,
@@ -165,22 +177,31 @@ table(Metadata, #{bindings := #{table := Table}}) ->
     binary_to_existing_atom(Table).
 
 
-key(#{keys := Positions, oids := Types}, #{bindings := #{key := Encoded}}) ->
-    ?LOG_DEBUG(#{keys => Positions, oids => Types, key => Encoded}),
+key(#{keys := Positions, oids := Types} = Metadata, Req) ->
+    ?LOG_DEBUG(#{metadata => Metadata, req => Req}),
 
-    case lists:map(
+    case pgmp_data_row:decode(
+           #{<<"client_encoding">> => <<"UTF8">>},
+           lists:map(
            fun
-               (Position) ->
-                   lists:nth(Position, Types)
+               ({Encoded, KeyOID}) ->
+                   {#{format => text, type_oid => KeyOID}, Encoded}
            end,
-           Positions) of
+           lists:zip(
+             cowboy_req:path_info(Req),
 
-        [KeyOID] ->
-            ?LOG_DEBUG(#{key_oid => keyOID}),
-            [Decoded] = pgmp_data_row:decode(
-                   #{<<"client_encoding">> => <<"UTF8">>},
-                   [{#{format => text, type_oid => KeyOID}, Encoded}]),
-            Decoded
+             lists:map(
+               fun
+                   (Position) ->
+                       lists:nth(Position, Types)
+               end,
+               Positions)))) of
+
+        [Primary] ->
+            Primary;
+
+        Composite ->
+            list_to_tuple(Composite)
     end.
 
 
@@ -188,27 +209,48 @@ encode(?JSON, Content) ->
     jsx:encode(Content).
 
 
-row(ContentType, Metadata) ->
+row(ContentType,
+    #{columns := Columns,
+      oids := OIDS} = Metadata) ->
+    ?LOG_DEBUG(
+       #{content_type => ContentType,
+         metadata => Metadata}),
+
     fun
         (Values, A) ->
-            [?FUNCTION_NAME(ContentType, Metadata, Values) | A]
+            [maps:from_list(
+               lists:zipwith3(
+                 combine(ContentType),
+                 Columns,
+                 OIDS,
+                 values(Metadata, Values))) | A]
     end.
 
 
-row(ContentType, #{columns := Columns, oids := OIDS}, Row) when is_tuple(element(1, Row)) ->
-    [Composite | Values] = tuple_to_list(Row),
-    ?FUNCTION_NAME(ContentType, Columns, OIDS, tuple_to_list(Composite) ++ Values, #{});
+values(#{keys := [_]}, Values) ->
+    tuple_to_list(Values);
 
-row(ContentType, #{columns := Columns, oids := OIDS}, Row) ->
-    ?FUNCTION_NAME(ContentType, Columns, OIDS, tuple_to_list(Row), #{}).
+values(#{keys := KeyPositions}, CompositeWithValues) when is_tuple(CompositeWithValues) ->
+    [Composite | Values] = tuple_to_list(CompositeWithValues),
+    values(1, KeyPositions, tuple_to_list(Composite), Values).
 
 
-row(_ContentType, [], [], [] , A) ->
-    A;
+values(_, [], [], Values) ->
+    Values;
+values(_, _, Keys, []) ->
+    Keys;
+values(Pos, [Pos | KeyPositions], [Key | Keys], Values) ->
+    [Key | ?FUNCTION_NAME(Pos + 1, KeyPositions, Keys, Values)];
+values(Pos, KeyPositions, Keys, [Value | Values]) ->
+    [Value | ?FUNCTION_NAME(Pos + 1, KeyPositions, Keys, Values)].
 
-row(ContentType, [Column | Columns], [OID | OIDs], [Value | Values] , A) ->
-    #{OID := ColumnType} = pgmp_types:cache(),
-    ?FUNCTION_NAME(ContentType, Columns, OIDs, Values, A#{Column => value(ContentType, ColumnType, Value)}).
+
+combine(ContentType) ->
+    fun
+        (Column, OID, Value) ->
+            #{OID := ColumnType} = pgmp_types:cache(),
+            {Column, value(ContentType, ColumnType, Value)}
+    end.
 
 
 value(_ContentType, #{<<"typname">> := <<"date">>}, {Ye, Mo, Da}) ->
