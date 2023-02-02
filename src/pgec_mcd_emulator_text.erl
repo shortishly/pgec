@@ -84,23 +84,9 @@ table(Metadata, #{table := Table} = PTK) ->
     binary_to_existing_atom(Table).
 
 
-key(#{keys := Positions, oids := Types} = Metadata, #{key := Encoded} = PTK) ->
+key(Metadata, #{key := Encoded} = PTK) ->
     ?LOG_DEBUG(#{metadata => Metadata, ptk => PTK}),
-
-    case lists:map(
-           fun
-               (Position) ->
-                   lists:nth(Position, Types)
-           end,
-           Positions) of
-
-        [KeyOID] ->
-            ?LOG_DEBUG(#{key_oid => keyOID}),
-            [Decoded] = pgmp_data_row:decode(
-                          #{<<"client_encoding">> => <<"UTF8">>},
-                          [{#{format => text, type_oid => KeyOID}, Encoded}]),
-            Decoded
-    end.
+    pgec_kv:key(Metadata, string:split(Encoded, "/", all)).
 
 
 metadata(#{publication := Publication, table := Table} = Arg) ->
@@ -119,33 +105,5 @@ ptk(PTK) ->
     end.
 
 
-row(#{columns := Columns, oids := OIDS}, Row) when is_tuple(element(1, Row)) ->
-    [Composite | Values] = tuple_to_list(Row),
-    ?FUNCTION_NAME(Columns, OIDS, tuple_to_list(Composite) ++ Values, #{});
-
-row(#{columns := Columns, oids := OIDS}, Row) ->
-    ?FUNCTION_NAME(Columns, OIDS, tuple_to_list(Row), #{}).
-
-
-row([], [], [] , A) ->
-    A;
-
-row([Column | Columns], [OID | OIDs], [Value | Values] , A) ->
-    #{OID := ColumnType} = pgmp_types:cache(),
-    ?FUNCTION_NAME(Columns, OIDs, Values, A#{Column => value(ColumnType, Value)}).
-
-
-value(#{<<"typname">> := <<"date">>}, {Ye, Mo, Da}) ->
-    iolist_to_binary(
-      io_lib:format(
-        "~4..0b-~2..0b-~2..0b",
-        [Ye, Mo, Da]));
-
-value(#{<<"typname">> := <<"time">>}, {Ho, Mi, Se}) ->
-    iolist_to_binary(
-      io_lib:format(
-        "~2..0b:~2..0b:~2..0b",
-        [Ho, Mi, Se]));
-
-value(_ColumnType, Value) ->
-    Value.
+row(Metadata, Row) ->
+    pgec_kv:row(Metadata, <<"application/json">>, Row).

@@ -49,7 +49,7 @@ init(#{bindings := #{publication := Publication,
                [encode(
                   ContentType,
                   #{rows => ets:foldl(
-                              row(ContentType, Metadata),
+                              pgec_kv:row(Metadata, ContentType),
                               [],
                               table(Metadata, Req))}),
                 "\n"],
@@ -75,7 +75,7 @@ init(#{bindings := #{publication := Publication,
         [{_, Metadata}] ->
             ?LOG_DEBUG(#{metadata => Metadata}),
 
-            case lookup(Metadata, Req) of
+            try lookup(Metadata, Req) of
                 [_] = Row ->
                     ContentType = negotiate_content_type(Req),
 
@@ -86,7 +86,7 @@ init(#{bindings := #{publication := Publication,
                        [encode(
                           ContentType,
                           hd(lists:foldl(
-                               row(ContentType, Metadata),
+                               pgec_kv:row(Metadata, ContentType),
                                [],
                                Row))),
                         "\n"],
@@ -97,14 +97,27 @@ init(#{bindings := #{publication := Publication,
                     {ok,
                      not_found(Req,
                                #{publication => Publication,
-                                 key => key(Metadata, Req),
+                                 keys => Keys,
+                                 table => Table}),
+                     Opts}
+
+            catch error:badarg ->
+                    {ok,
+                     not_found(Req,
+                               #{publication => Publication,
+                                 keys => Keys,
                                  table => Table}),
                      Opts}
             end;
 
         [] ->
             ?LOG_DEBUG(#{metadata => not_found}),
-            {ok, not_found(Req, #{publication => Publication, table => Table}), Opts}
+            {ok,
+             not_found(Req,
+                       #{publication => Publication,
+                         keys => Keys,
+                         table => Table}),
+             Opts}
     end;
 
 init(#{bindings := #{publication := Publication}} = Req,
@@ -160,7 +173,7 @@ headers(ContentType) ->
 
 
 not_found(Req, Body) ->
-    cowboy_req:reply(404, headers(), jsx:encode(Body), Req).
+    cowboy_req:reply(404, headers(), [jsx:encode(Body), "\n"], Req).
 
 
 not_found(Req) ->
@@ -177,93 +190,10 @@ table(Metadata, #{bindings := #{table := Table}}) ->
     binary_to_existing_atom(Table).
 
 
-key(#{keys := Positions, oids := Types} = Metadata, Req) ->
+key(Metadata, Req) ->
     ?LOG_DEBUG(#{metadata => Metadata, req => Req}),
-
-    case pgmp_data_row:decode(
-           #{<<"client_encoding">> => <<"UTF8">>},
-           lists:map(
-           fun
-               ({Encoded, KeyOID}) ->
-                   {#{format => text, type_oid => KeyOID}, Encoded}
-           end,
-           lists:zip(
-             cowboy_req:path_info(Req),
-
-             lists:map(
-               fun
-                   (Position) ->
-                       lists:nth(Position, Types)
-               end,
-               Positions)))) of
-
-        [Primary] ->
-            Primary;
-
-        Composite ->
-            list_to_tuple(Composite)
-    end.
+    pgec_kv:key(Metadata, cowboy_req:path_info(Req)).
 
 
 encode(?JSON, Content) ->
     jsx:encode(Content).
-
-
-row(ContentType,
-    #{columns := Columns,
-      oids := OIDS} = Metadata) ->
-    ?LOG_DEBUG(
-       #{content_type => ContentType,
-         metadata => Metadata}),
-
-    fun
-        (Values, A) ->
-            [maps:from_list(
-               lists:zipwith3(
-                 combine(ContentType),
-                 Columns,
-                 OIDS,
-                 values(Metadata, Values))) | A]
-    end.
-
-
-values(#{keys := [_]}, Values) ->
-    tuple_to_list(Values);
-
-values(#{keys := KeyPositions}, CompositeWithValues) when is_tuple(CompositeWithValues) ->
-    [Composite | Values] = tuple_to_list(CompositeWithValues),
-    values(1, KeyPositions, tuple_to_list(Composite), Values).
-
-
-values(_, [], [], Values) ->
-    Values;
-values(_, _, Keys, []) ->
-    Keys;
-values(Pos, [Pos | KeyPositions], [Key | Keys], Values) ->
-    [Key | ?FUNCTION_NAME(Pos + 1, KeyPositions, Keys, Values)];
-values(Pos, KeyPositions, Keys, [Value | Values]) ->
-    [Value | ?FUNCTION_NAME(Pos + 1, KeyPositions, Keys, Values)].
-
-
-combine(ContentType) ->
-    fun
-        (Column, OID, Value) ->
-            #{OID := ColumnType} = pgmp_types:cache(),
-            {Column, value(ContentType, ColumnType, Value)}
-    end.
-
-
-value(_ContentType, #{<<"typname">> := <<"date">>}, {Ye, Mo, Da}) ->
-    iolist_to_binary(
-      io_lib:format(
-        "~4..0b-~2..0b-~2..0b",
-        [Ye, Mo, Da]));
-
-value(_ContentType, #{<<"typname">> := <<"time">>}, {Ho, Mi, Se}) ->
-    iolist_to_binary(
-      io_lib:format(
-        "~2..0b:~2..0b:~2..0b",
-        [Ho, Mi, Se]));
-
-value(_ContentType, _ColumnType, Value) ->
-    Value.
