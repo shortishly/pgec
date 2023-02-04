@@ -1,8 +1,32 @@
 ---
 services:
+  grafana:
+    image:
+      grafana/grafana:${GRAFANA_VERSION:-9.3.6}
+    ports:
+      - 3000:3000
+    environment:
+      GF_AUTH_ANONYMOUS_ENABLED: true
+      GF_AUTH_ANONYMOUS_HIDE_VERSION: true
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Admin
+      GF_AUTH_DISABLE_LOGIN_FORM: true
+      GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH: /etc/dashboards/home.json
+    volumes:
+      - type: bind
+        source: example/grafana/provisioning
+        target: /etc/grafana/provisioning
+      - type: bind
+        source: example/grafana/dashboards
+        target: /etc/dashboards
+      - grafana:/var/lib/grafana
+    pull_policy:
+      ${PULL_POLICY:-missing}
+    profiles:
+      - monitoring
+      - all
   prometheus:
     image:
-      prom/prometheus:${PROMETHEUS_VERSION:-latest}
+      prom/prometheus:${PROMETHEUS_VERSION:-v2.42.0}
     ports:
       - 9090:9090
     configs:
@@ -15,7 +39,7 @@ services:
       - all
   postgres:
     image:
-      postgres:${POSTGRES_VERSION:-15}
+      postgres:${POSTGRES_VERSION:-15.1}
     environment:
       PGUSER: postgres
       POSTGRES_PASSWORD: postgres
@@ -41,17 +65,24 @@ services:
     profiles:
       - db
       - all
-  erlang:
+  load-generator:
     image:
-      erlang:${ERLANG_VERSION:-25.2}
+      postgres:${POSTGRES_VERSION:-15.1}
+    environment:
+      PGPASSWORD: postgres
     command:
-      /bin/sh -c "while sleep 1000; do :; done"
+      /bin/randload
+    volumes:
+      - type: bind
+        source: example/randload
+        target: /bin/randload
+    links:
+      - postgres
     pull_policy:
       ${PULL_POLICY:-missing}
     profiles:
-      - debug
-    links:
-      - postgres
+      - db
+      - all
   pgec:
     image:
       ${PGEC_IMAGE:-ghcr.io/shortishly/pgec:${PGEC_VERSION:-latest}}
@@ -77,4 +108,6 @@ configs:
     file: example/prometheus.yml
 volumes:
   db:
+    driver: local
+  grafana:
     driver: local

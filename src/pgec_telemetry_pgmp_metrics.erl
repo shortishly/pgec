@@ -94,7 +94,7 @@ handle([pgmp, mm, Action, stop] = EventName,
 
 
 %% This clause handles telemetry from pgmp middleman dealing with
-%% execute to include the numnber of rows that were returned
+%% execute to include the number of rows that were returned
 %%
 handle([pgmp, mm, execute, stop] = EventName,
        #{duration := Duration, rows := Rows} = Measurements,
@@ -123,15 +123,16 @@ handle([pgmp, mm, execute, stop] = EventName,
                     millisecond)}]);
 
 
-%% This clause handles telemetry from pgmp middleman for bind or
-%% describe.
+%% This clause handles telemetry from pgmp middleman for bind,
+%% describe or execute.
 %%
 handle([pgmp, mm, Action, stop] = EventName,
        #{duration := Duration} = Measurements,
        Metadata,
        Config)
   when Action == bind;
-       Action == describe ->
+       Action == describe;
+       Action == execute ->
     ?LOG_DEBUG(#{event_name => EventName,
                  measurements => Measurements,
                  metadata => Metadata,

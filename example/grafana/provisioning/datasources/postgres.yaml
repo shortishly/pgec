@@ -1,0 +1,9 @@
+---
+apiVersion: 1
+datasources:
+  - name : PostgreSQL
+    type: postgres
+    url: postgres:5432
+    user: postgres
+    password: postgres
+    database: postgres

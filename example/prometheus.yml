@@ -10,3 +10,8 @@ scrape_configs:
     static_configs:
       - targets:
           - pgec:9100
+    metric_relabel_configs:
+      - action: labeldrop
+        regex: ^exported_instance$
+      - action: labeldrop
+        regex: ^exported_job

@@ -19,6 +19,7 @@
 -compile(export_all).
 -compile(nowarn_export_all).
 -include_lib("common_test/include/ct.hrl").
+-include_lib("eunit/include/eunit.hrl").
 
 
 all() ->
@@ -268,9 +269,13 @@ delete_test(Config) ->
                  [{timeout, 1_000}],
                  [{body_format, binary}]),
 
-    #{<<"key">> := K,
-      <<"publication">> := Publication,
-      <<"table">> := Table} = jsx:decode(JSON).
+    ct:log("~p~n", [JSON]),
+
+    ?assertEqual(
+    #{<<"keys">> => [integer_to_binary(K)],
+      <<"publication">> => Publication,
+      <<"table">> => Table},
+       jsx:decode(JSON)).
 
 
 insert_test(Config) ->

@@ -49,6 +49,33 @@ handle([cowboy, request, stop] = EventName,
            delta => 1}],
         Measurements));
 
+handle([cowboy, request, exception] = EventName,
+       Measurements,
+       #{req := Req},
+       _Config) ->
+    Prefix = lists:sublist(EventName, 2),
+    Label = maps:with([host, port], Req),
+    metrics:counter(
+      maps:fold(
+        fun
+            (duration = Metric, Delta, A) ->
+                [#{name => pgec_util:snake_case(Prefix ++ [error, Metric, ms]),
+                   label => Label,
+                   delta => erlang:convert_time_unit(
+                              Delta,
+                              native,
+                              millisecond)} | A];
+
+            (Metric, Delta, A) ->
+                [#{name => pgec_util:snake_case(Prefix ++ [error, Metric]),
+                   label => Label,
+                   delta => Delta} | A]
+        end,
+        [#{name => pgec_util:snake_case(Prefix ++ [error, count]),
+           label => Label,
+           delta => 1}],
+        Measurements));
+
 handle(EventName, Measurements, Metadata, Config) ->
     ?LOG_INFO(#{event_name => EventName,
                 measurements => Measurements,
