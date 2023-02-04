@@ -17,75 +17,128 @@ real-time.
 
 ## Features
 
-- Instrumented with a [Prometheus http adapter](docs/monitoring.md)
+- Instrumented with a [Prometheus HTTP Adapter](docs/monitoring.md)
 - Memcached API
 - REST API
-- a [compose](docs/compose.md) with PostgreSQL, Prometheus and example data.
+- a [compose](docs/compose.md) with PostgreSQL with example data,
+  [Grafana][grafana], and [Prometheus][prometheus-io].
 - a [GitHub Codespace](docs/codespaces.md) for development and
   evaluation.
 - Support for [row filters and column lists][shortishly-pgec] in
-PostgreSQL 15.
+  PostgreSQL 15.
 
 ## Quick Start
 
-Start [PostgreSQL][postgresql-org] as a docker container:
+Clone this repository for the [docker][docker-com-get-docker]
+[compose.yaml](compose.yaml) with sample [PostgreSQL][postgresql-org]
+data installed.
 
 ```shell
-docker run \
-    --name postgres \
-    --detach \
-    --publish 5432:5432 \
-    --pull always \
-    --env POSTGRES_PASSWORD=postgres \
-    postgres:15 \
-    -c wal_level=logical
+git clone https://github.com/shortishly/pgec.git
 ```
 
-An interactive SQL shell so that we can create some data:
+Alternatively, with the [Github CLI][cli-github-com] installed use:
 
 ```shell
-docker exec \
-    --interactive \
-    --tty \
+gh repo clone shortishly/pgec
+```
+
+Start up everything with:
+
+```shell
+docker compose --profile all up --detach --remove-orphans
+```
+
+Sample data is populated from the scripts in [this
+directory](example/initdb.d), using this
+[publication](example/initdb.d/020-create-publication.sql). The
+compose includes a small load generator using table
+`randload`. Grafana dashboards: <http://localhost:3000/>.
+
+![Replication Dashboard](dashboard-replication.png)
+
+Betty Rubble's grades are <http://localhost:8080/pub/grades/234-56-7890>:
+
+```shell
+curl -s http://localhost:8080/pub/grades/234-56-7890 | jq
+```
+
+```json
+{
+  "final": 46,
+  "first": "Betty",
+  "grade": "C-",
+  "last": "Rubble",
+  "ssn": "234-56-7890",
+  "test1": 44,
+  "test2": 90,
+  "test3": 80,
+  "test4": 90
+}
+```
+
+A 'C-' seems harsh, lets give her a 'C' instead:
+
+```shell
+docker compose exec \
+    --no-TTY \
     postgres \
     psql \
-    postgres \
-    postgres
+    --command="update grades set grade='C' where ssn='234-56-7890'"
 ```
 
-Create a simple table with a publication:
-
-```sql
-create table xy (x integer primary key, y text);
-
-insert into xy
-    values
-        (1, 'foo'),
-        (2, 'bar'),
-        (3, 'baz'),
-        (4, 'boo');
-
-create publication pub for table xy;
-```
-
-Leave the SQL shell running, we will use it again shortly.
-
-Start `pgec` in another terminal. `pgec` will act as an edge cache for
-publication we have just created.
+Fetching the same row, but with the memcached API instead:
 
 ```shell
-docker run \
-    --detach \
-    --name pgec \
-    --publish 8080:80 \
-    --publish 9100:9100 \
-    --publish 11211:11211 \
-    --pull always \
-    -e PGMP_REPLICATION_LOGICAL_PUBLICATION_NAMES=pub \
-    -e PGMP_DATABASE_USER=postgres \
-    -e PGMP_DATABASE_PASSWORD=postgres \
-    -e PGMP_DATABASE_HOSTNAME=$(docker inspect --format={{.NetworkSettings.Networks.bridge.IPAddress}} postgres) \
-    ghcr.io/shortishly/pgec:latest
+telnet localhost 11211
+Trying ::1...
+Connected to localhost.
+Escape character is '^]'.
+get pub.grades.234-56-7890
+VALUE pub.grades.234-56-7890 0 120
+{"final":46,"first":"Betty","grade":"C","last":"Rubble","ssn":"234-56-7890","test1":44,"test2":90,"test3":80,"test4":90}
+END
+```
+
+To retrieve the whole table via the REST API:
+
+```shell
+curl -s http://localhost:8080/pub/grades | jq
+```
+
+Primary keys:
+
+```shell
+curl -s http://localhost:8080/pub/deniro/Casino | jq
+```
+
+```json
+{
+  "score": 80,
+  "title": "Casino",
+  "year": 1995
+}
+```
+
+Composite keys:
+
+```shell
+curl -s http://localhost:8080/pub/cities/Tulsa/OK | jq
+```
+
+```json
+{
+  "city": "Tulsa",
+  "ew": "W",
+  "lat_d": 36,
+  "lat_m": 9,
+  "lat_s": 35,
+  "lon_d": 95,
+  "lon_m": 54,
+  "lon_s": 36,
+  "ns": "N",
+  "state": "OK"
+}
 ```
 
 ## In Memory Database Replication Cache
@@ -180,7 +233,11 @@ Will return:
 {"x":2,"y":"bar"}
 ```
 
+[cli-github-com]: https://cli.github.com
+[docker-com-get-docker]: https://docs.docker.com/get-docker/
+[grafana]: https://grafana.com/
 [memcached-npmjs-client]: https://www.npmjs.com/package/memcached
 [memcached-org]: https://memcached.org/
 [postgresql-org]: https://www.postgresql.org/
+[prometheus-io]: https://prometheus.io
 [shortishly-pgec]: https://shortishly.com/blog/postgresql-edge-cache/

@@ -3,17 +3,6 @@
 pgec is instrumented using [telemetry][telemetry] with a
 [Prometheus][prometheus-io] http adapter listening on port 9100.
 
-```shell
-docker run \
-    --rm \
-    --detach \
-    --name prometheus \
-    --publish 9090:9090 \
-    --volume $(pwd)/prometheus.yml:/etc/prometheus/prometheus.yml \
-    --pull always \
-    prom/prometheus
-```
-
 The following sections describe the metrics that are exposed by pgec.
 
 ## BEAM
