@@ -18,8 +18,8 @@ create table randload (
   id serial primary key,
   x integer,
   uuid uuid default gen_random_uuid(),
-  created_time timestamptz default now(),
-  updated_time timestamptz default now()
+  created_time timestamp default now(),
+  updated_time timestamp default now()
 );
 
 insert into randload (x) select generate_series(1, 1000000);

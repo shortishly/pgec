@@ -3,7 +3,7 @@
 
     "dockerFile": "Dockerfile",
 
-    "postStartCommand": "docker compose --profile db --profile monitoring up -d",
+    "postStartCommand": "docker compose --profile all up --detach",
 
     "containerEnv": {
         "PGMP_DATABASE_USER": "postgres",
@@ -27,7 +27,8 @@
         }
     },
 
-    "forwardPorts": [5432,
+    "forwardPorts": [3000,
+                     5432,
                      8080,
                      9090,
                      9100,
