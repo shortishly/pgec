@@ -29,7 +29,7 @@ real-time.
 
 ## Quick Start
 
-![demo](./demo.gif)
+![demo](pgec-demo-compose.gif)
 
 Clone this repository for the [docker][docker-com-get-docker]
 [compose.yaml](compose.yaml) with sample [PostgreSQL][postgresql-org]
@@ -45,6 +45,12 @@ Alternatively, with the [Github CLI][cli-github-com] installed use:
 gh repo clone shortishly/pgec
 ```
 
+Change to the newly cloned directory:
+
+```shell
+cd pgec
+```
+
 Start up everything with:
 
 ```shell
@@ -57,7 +63,7 @@ directory](example/initdb.d), using this
 compose includes a small load generator using table
 `randload`. Grafana dashboards: <http://localhost:3000/>.
 
-![Replication Dashboard](dashboard-replication.png)
+![Replication Dashboard](pgec-demo-grafana.gif)
 
 The `grades` table is populated with data from:
 
