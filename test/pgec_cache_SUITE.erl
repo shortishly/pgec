@@ -49,6 +49,7 @@ init_per_suite(Config) ->
     application:set_env(pgec, table_metadata_trace, false),
 
     application:set_env(mcd, protocol_callback, pgec_mcd_emulator),
+    application:set_env(resp, protocol_callback, pgec_resp_emulator),
 
     {ok, _} = pgec:start(),
 
