@@ -1,0 +1,59 @@
+#!/usr/bin/env bash
+# Copyright (c) 2023 Peter Morgan <peter.james.morgan@gmail.com>
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+#
+. ../../paxtonhare/demo-magic/demo-magic.sh
+
+clear
+docker compose --profile all down --remove-orphans --volumes
+
+TYPE_SPEED=20
+DEMO_PROMPT="${GREEN}➜ ${CYAN}\W ${COLOR_RESET}"
+PROMPT_TIMEOUT=3
+
+figlet pgec
+pe "docker compose --profile all up --detach --remove-orphans"
+p "docker compose --profile all ps"
+docker compose --profile all ps --format json | jq '.[] | .Name + ": "+ .State'
+wait
+
+figlet example data
+figlet grades
+
+p "cat example/data/burkardt/grades.csv"
+ack --passthru 234-56-7890 example/data/burkardt/grades.csv
+p "cat example/initdb.d/010-grades.sql"
+grep --invert-match '^--' example/initdb.d/010-grades.sql|ack --passthru "ssn text primary key"
+p "curl -s http://localhost:8080/pub/grades/234-56-7890"
+curl -s http://localhost:8080/pub/grades/234-56-7890 | jq | ack --passthru '\"C-\"'
+p "update grades set grade='C' where ssn='234-56-7890'"
+docker compose exec --no-TTY postgres psql --command="update grades set grade='C' where ssn='234-56-7890'"
+p "curl -s http://localhost:8080/pub/grades/234-56-7890"
+curl -s http://localhost:8080/pub/grades/234-56-7890 | jq | ack --passthru '\"C\"'
+p "echo 'get pub.grades.234-56-7890' | nc -c localhost 11211"
+echo 'get pub.grades.234-56-7890' | nc -c localhost 11211
+
+wait
+
+figlet example data
+figlet cities
+p "cat example/data/burkardt/cities.csv"
+ack --after-context=3 --before-context=3 '\"Tulsa\",OK' example/data/burkardt/cities.csv
+
+p "cat example/initdb.d/010-cities.sql"
+grep --invert-match '^--' example/initdb.d/010-cities.sql | ack --passthru 'city|state'
+pe "curl -s http://localhost:8080/pub/cities/Tulsa/OK | jq"
+pe "echo 'get pub.cities.Tulsa/OK' | nc -c localhost 11211"
+
+sleep 5
