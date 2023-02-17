@@ -95,6 +95,7 @@ services:
       PGMP_SOCKET_TRACE: false
     ports:
       - 8080:80
+      - 6379:6379
       - 9100:9100
       - 11211:11211
     links:
