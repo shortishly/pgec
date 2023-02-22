@@ -13,7 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 #
-. ../../paxtonhare/demo-magic/demo-magic.sh -n
+. ../../paxtonhare/demo-magic/demo-magic.sh
 
 TYPE_SPEED=20
 DEMO_PROMPT="${GREEN}➜ ${CYAN}\W ${COLOR_RESET}"

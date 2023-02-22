@@ -20,11 +20,8 @@ sleep 30
 clear
 
 svg-term \
+    --no-cursor \
     --command $(dirname $0)/pgec-compose \
-    --term terminal \
-    --profile Homebrew \
-    --height 25 \
-    --width 80 \
     --window > pgec.svg
 
 echo "Done!"
