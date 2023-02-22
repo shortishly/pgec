@@ -1,4 +1,4 @@
-%% Copyright (c) 2022 Peter Morgan <peter.james.morgan@gmail.com>
+%% Copyright (c) 2023 Peter Morgan <peter.james.morgan@gmail.com>
 %%
 %% Licensed under the Apache License, Version 2.0 (the "License");
 %% you may not use this file except in compliance with the License.
@@ -13,47 +13,53 @@
 %% limitations under the License.
 
 
--module(pgec_mcd_emulator_text).
+-module(pgec_resp_emulator).
 
 
+-export([init/1]).
 -export([recv/1]).
 -include_lib("kernel/include/logger.hrl").
 -include_lib("stdlib/include/ms_transform.hrl").
 
 
-recv(#{message := #{command := quit}}) ->
-    stop;
+init([]) ->
+    {ok, #{}}.
 
-recv(#{message := #{command := get, keys := Keys}} = Arg) ->
-    ?LOG_DEBUG(#{arg => Arg}),
-    {continue,
-     lists:foldl(
-       fun
-           (Key, A) ->
-               try lookup(ptk(Key)) of
-                   {ok, #{metadata := Metadata, row := Row}} ->
-                       [{encode,
-                         #{command => value,
-                           key => Key,
-                           flags => 0,
-                           expiry => 0,
-                           data => jsx:encode(row(Metadata, Row))}} | A];
 
-                   not_found ->
-                       A
-               catch
-                   error:badarg ->
-                       A
-               end
-       end,
-       [{encode, #{command => 'end'}}],
-       Keys)};
+recv(#{message := {array, [{bulk, <<"INFO">>}]}}) ->
+    {continue, {encode, {bulk, "# Server\r\nredis_version:1.2.3\r\n"}}};
 
-recv(#{message := #{command := Command}}) ->
-    {continue,
-     {encode,
-      #{command => client_error,
-        reason => io_lib:format("~p: not implemented", [Command])}}}.
+recv(#{message := {array, [{bulk, <<"HGETALL">>}, {bulk, Key}]}}) ->
+    try lookup(ptk(Key)) of
+        {ok, #{metadata := Metadata, row := Row}} ->
+
+            {continue,
+             {encode,
+              {array,
+               maps:fold(
+                 fun
+                     (K, V, A) when is_integer(V) ->
+                         [{bulk, K}, {bulk, integer_to_list(V)} | A];
+
+                     (K, V, A) when is_float(V) ->
+                         [{bulk, K}, {bulk, float_to_list(V, [short])} | A];
+
+                     (K, V, A) ->
+                         [{bulk, K}, {bulk, V} | A]
+                 end,
+                 [],
+                 row(Metadata, Row))}}};
+
+        not_found ->
+            {continue, {encode, {array, []}}}
+
+    catch
+        error:badarg ->
+            {continue, {encode, {array, []}}}
+    end;
+
+recv(#{message := {array, [{bulk, Command} | _]}}) ->
+    {continue, {encode, {error, ["unknown command '", Command, "'"]}}}.
 
 
 lookup(PTK) ->

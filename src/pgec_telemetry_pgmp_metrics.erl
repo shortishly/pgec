@@ -94,7 +94,7 @@ handle([pgmp, mm, Action, stop] = EventName,
 
 
 %% This clause handles telemetry from pgmp middleman dealing with
-%% execute to include the numnber of rows that were returned
+%% execute to include the number of rows that were returned
 %%
 handle([pgmp, mm, execute, stop] = EventName,
        #{duration := Duration, rows := Rows} = Measurements,
@@ -123,15 +123,16 @@ handle([pgmp, mm, execute, stop] = EventName,
                     millisecond)}]);
 
 
-%% This clause handles telemetry from pgmp middleman for bind or
-%% describe.
+%% This clause handles telemetry from pgmp middleman for bind,
+%% describe or execute.
 %%
 handle([pgmp, mm, Action, stop] = EventName,
        #{duration := Duration} = Measurements,
        Metadata,
        Config)
   when Action == bind;
-       Action == describe ->
+       Action == describe;
+       Action == execute ->
     ?LOG_DEBUG(#{event_name => EventName,
                  measurements => Measurements,
                  metadata => Metadata,
@@ -205,6 +206,19 @@ handle(EventName, #{count := N} = Measurements, Metadata, Config) ->
         delta => N});
 
 
+%% This generic clause catches any other telemetry from pgmp that is a
+%% size.
+%%
+handle(EventName, #{size := N} = Measurements, Metadata, Config) ->
+    ?LOG_DEBUG(#{event_name => EventName,
+                 measurements => Measurements,
+                 metadata => Metadata,
+                 config => Config}),
+    metrics:gauge(
+      #{name => pgec_util:snake_case(EventName ++ [size]),
+        value => N});
+
+
 %% Fall through clause to log any missed telemetry events from pgmp.
 %%
 handle(EventName, Measurements, Metadata, Config) ->
@@ -221,7 +235,7 @@ mm_rep_count(EventName, #{count := N}, #{relations := Relations}, _Config, Label
       fun
           (Relation) ->
               #{name => pgec_util:snake_case(EventName ++ [count]),
-                label => Label#{relation => Relation},
+                label => Label#{relation => relation(Relation)},
                 delta => N}
       end,
       Relations);
@@ -230,9 +244,16 @@ mm_rep_count(EventName, #{count := N}, #{relations := Relations}, _Config, Label
 %% This clause deals with actions other than truncate that only apply
 %% to a single relation.
 %%
-mm_rep_count(EventName, #{count := N}, Metadata, _Config, Label) ->
+mm_rep_count(EventName, #{count := N}, #{relation := Relation}, _Config, Label) ->
     #{name => pgec_util:snake_case(EventName ++ [count]),
-      label => maps:merge(
-                 maps:with([relation], Metadata),
-                 Label),
+      label => Label#{relation => relation(Relation)},
+      delta => N};
+
+mm_rep_count(EventName, #{count := N}, _, _Config, Label) ->
+    #{name => pgec_util:snake_case(EventName ++ [count]),
+      label => Label,
       delta => N}.
+
+
+relation(#{namespace := Namespace, name := Name}) ->
+    iolist_to_binary([Namespace, ".", Name]).

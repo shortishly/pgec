@@ -91,8 +91,8 @@ handle_event(
       pgec_metadata,
       maps:fold(
         fun
-            (Table, Data, A) ->
-                [{{Publication, Table}, Data} | A]
+            ({_Namespace, Name}, Data, A) ->
+                [{{Publication, Name}, Data} | A]
         end,
         [],
         Metadata)),

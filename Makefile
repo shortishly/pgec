@@ -27,7 +27,8 @@ DEPS = \
 	jsx \
 	mcd \
 	metrics \
-	pgmp
+	pgmp \
+	resp
 
 SHELL_DEPS = \
 	sync
@@ -45,6 +46,7 @@ dep_cowboy_telemetry = git https://github.com/beam-telemetry/cowboy_telemetry.gi
 dep_mcd = git https://github.com/shortishly/mcd.git
 dep_metrics = git https://github.com/shortishly/metrics.git
 dep_pgmp = git https://github.com/shortishly/pgmp.git
+dep_resp = git https://github.com/shortishly/resp.git
 
 
 dep_cowboy_commit = 2.9.0
@@ -52,7 +54,8 @@ dep_cowboy_telemetry_commit = v0.4.0
 dep_jsx_commit = v3.1.0
 dep_mcd_commit = 0.5.0
 dep_metrics_commit = 0.2.0
-dep_pgmp_commit = develop
+dep_pgmp_commit = 0.18.0
+dep_resp_commit = 0.1.2
 
 
 PLT_APPS = \
@@ -72,6 +75,7 @@ PLT_APPS = \
 	phrase \
 	public_key \
 	ranch \
+	resp \
 	runtime_tools \
 	ssl \
 	stdlib \

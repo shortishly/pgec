@@ -19,6 +19,7 @@
 -compile(export_all).
 -compile(nowarn_export_all).
 -include_lib("common_test/include/ct.hrl").
+-include_lib("eunit/include/eunit.hrl").
 
 
 all() ->
@@ -48,6 +49,7 @@ init_per_suite(Config) ->
     application:set_env(pgec, table_metadata_trace, false),
 
     application:set_env(mcd, protocol_callback, pgec_mcd_emulator),
+    application:set_env(resp, protocol_callback, pgec_resp_emulator),
 
     {ok, _} = pgec:start(),
 
@@ -268,9 +270,13 @@ delete_test(Config) ->
                  [{timeout, 1_000}],
                  [{body_format, binary}]),
 
-    #{<<"key">> := K,
-      <<"publication">> := Publication,
-      <<"table">> := Table} = jsx:decode(JSON).
+    ct:log("~p~n", [JSON]),
+
+    ?assertEqual(
+    #{<<"keys">> => [integer_to_binary(K)],
+      <<"publication">> => Publication,
+      <<"table">> => Table},
+       jsx:decode(JSON)).
 
 
 insert_test(Config) ->
