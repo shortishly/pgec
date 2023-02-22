@@ -13,11 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 #
-. ../../paxtonhare/demo-magic/demo-magic.sh
-
-clear
-docker compose --profile all down --remove-orphans --volumes
-clear
+. ../../paxtonhare/demo-magic/demo-magic.sh -n
 
 TYPE_SPEED=20
 DEMO_PROMPT="${GREEN}➜ ${CYAN}\W ${COLOR_RESET}"
@@ -27,7 +23,6 @@ figlet pgec
 pe "docker compose --profile all up --detach --remove-orphans"
 p "docker compose --profile all ps"
 docker compose --profile all ps --format json | jq '.[] | .Name + ": "+ .State'
-wait
 
 figlet example data
 figlet grades
@@ -37,37 +32,43 @@ ack --passthru 234-56-7890 example/data/burkardt/grades.csv
 p "cat example/initdb.d/010-grades.sql"
 grep --invert-match '^--' example/initdb.d/010-grades.sql|ack --passthru "ssn text primary key"
 
+wait
 figlet rest api
 p "curl -s http://localhost:8080/pub/grades/234-56-7890"
 curl -s http://localhost:8080/pub/grades/234-56-7890 | jq | ack --passthru '\"C-\"'
 
+wait
 figlet redis api
 p "redis-cli HGETALL pub.grades.234-56-7890"
 iredis HGETALL pub.grades.234-56-7890
 
-figlet memcached api
-p "echo 'get pub.grades.234-56-7890' | nc -c localhost 11211"
-echo 'get pub.grades.234-56-7890' | nc -c localhost 11211
-
-figlet realtime updates
-
-p "update grades set grade='C' where ssn='234-56-7890'"
-docker compose exec --no-TTY postgres psql --command="update grades set grade='C' where ssn='234-56-7890'"
-
-figlet rest api
-p "curl -s http://localhost:8080/pub/grades/234-56-7890"
-curl -s http://localhost:8080/pub/grades/234-56-7890 | jq | ack --passthru '\"C\"'
-
-figlet redis api
-p "redis-cli HGETALL pub.grades.234-56-7890"
-iredis HGETALL pub.grades.234-56-7890
-
+wait
 figlet memcached api
 p "echo 'get pub.grades.234-56-7890' | nc -c localhost 11211"
 echo 'get pub.grades.234-56-7890' | nc -c localhost 11211
 
 wait
+figlet realtime updates
 
+p "update grades set grade='C' where ssn='234-56-7890'"
+docker compose exec --no-TTY postgres psql --command="update grades set grade='C' where ssn='234-56-7890'"
+
+wait
+figlet rest api
+p "curl -s http://localhost:8080/pub/grades/234-56-7890"
+curl -s http://localhost:8080/pub/grades/234-56-7890 | jq | ack --passthru '\"C\"'
+
+wait
+figlet redis api
+p "redis-cli HGETALL pub.grades.234-56-7890"
+iredis HGETALL pub.grades.234-56-7890
+
+wait
+figlet memcached api
+p "echo 'get pub.grades.234-56-7890' | nc -c localhost 11211"
+echo 'get pub.grades.234-56-7890' | nc -c localhost 11211
+
+wait
 figlet example data
 figlet cities
 figlet composite key
@@ -77,13 +78,16 @@ ack --after-context=3 --before-context=3 '\"Tulsa\",OK' example/data/burkardt/ci
 p "cat example/initdb.d/010-cities.sql"
 grep --invert-match '^--' example/initdb.d/010-cities.sql | ack --passthru 'city|state'
 
+wait
 figlet rest api
 pe "curl -s http://localhost:8080/pub/cities/Tulsa/OK | jq"
 
+wait
 figlet redis api
 p "redis-cli HGETALL pub.cities.Tulsa/OK"
 iredis HGETALL pub.cities.Tulsa/OK
 
+wait
 figlet memcached api
 pe "echo 'get pub.cities.Tulsa/OK' | nc -c localhost 11211"
 

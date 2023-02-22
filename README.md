@@ -1,10 +1,11 @@
 # PostgreSQL Edge Cache (PGEC)
 
-pgec is a real-time in memory database replication cache, with a
-memcached and REST API. It supports column lists and row filters with
-the latest features of replication in PostgreSQL 15.
+pgec is an Apache licensed real-time in memory PostgreSQL logical
+replication cache with Redis, Memcached and REST APIs. It supports
+column lists and row filters with the latest features of replication
+in PostgreSQL 15.
 
-![High Level Architecture](hla.png)
+![High Level Architecture](pgec-hla-2023-02-23.svg)
 
 The replication process creates a transaction checkpoint ensuring data
 integrity. Once the initial data has been collected, streaming
@@ -18,9 +19,10 @@ real-time.
 ## Features
 
 - Instrumented with a [Prometheus HTTP Adapter](docs/monitoring.md)
+- Redis API
 - Memcached API
 - REST API
-- a [compose](docs/compose.md) with PostgreSQL with example data,
+- a [compose](docs/compose.md) having PostgreSQL with example data,
   [Grafana][grafana], and [Prometheus][prometheus-io].
 - a [GitHub Codespace](docs/codespaces.md) for development and
   evaluation.
@@ -29,7 +31,7 @@ real-time.
 
 ## Quick Start
 
-![demo](pgec-demo-compose.gif)
+![demo](pgec-demo-compose-2023-02-22.svg)
 
 Clone this repository for the [docker][docker-com-get-docker]
 [compose.yaml](compose.yaml) with sample [PostgreSQL][postgresql-org]
@@ -117,6 +119,30 @@ docker compose exec \
     --command="update grades set grade='C' where ssn='234-56-7890'"
 ```
 
+Fetching the same row, with the redis API instead:
+
+```shell
+redis-cli HGETALL pub.grades.234-56-7890
+ 1) "test4"
+ 2) "90"
+ 3) "test3"
+ 4) "80"
+ 5) "test2"
+ 6) "90"
+ 7) "test1"
+ 8) "44"
+ 9) "ssn"
+10) "234-56-7890"
+11) "last"
+12) "Rubble"
+13) "grade"
+14) "C"
+15) "first"
+16) "Betty"
+17) "final"
+18) "46"
+```
+
 Fetching the same row, but with the memcached API instead:
 
 ```shell
@@ -136,7 +162,7 @@ To retrieve the whole table via the REST API:
 curl -s http://localhost:8080/pub/grades | jq
 ```
 
-Primary keys:
+Primary keys via REST API:
 
 ```shell
 curl -s http://localhost:8080/pub/deniro/Casino | jq
@@ -148,6 +174,19 @@ curl -s http://localhost:8080/pub/deniro/Casino | jq
   "title": "Casino",
   "year": 1995
 }
+```
+
+The same via the Redis API:
+
+```shell
+redis-cli HGETALL pub.deniro.Casino
+
+1) "year"
+2) "1995"
+3) "title"
+4) "Casino"
+5) "score"
+6) "80"
 ```
 
 Composite keys:
