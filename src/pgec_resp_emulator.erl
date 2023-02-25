@@ -26,10 +26,47 @@ init([]) ->
     {ok, #{}}.
 
 
-recv(#{message := {array, [{bulk, <<"INFO">>}]}}) ->
-    {continue, {encode, {bulk, "# Server\r\nredis_version:1.2.3\r\n"}}};
+recv(#{command := #{name := info}, message := {array, [_]}}) ->
+    {continue,
+     {encode,
+      {bulk,
+       ["# Server\r\nredis_version:", pgec:version(), "\r\n"]}}};
 
-recv(#{message := {array, [{bulk, <<"HGETALL">>}, {bulk, Key}]}}) ->
+
+recv(#{command := #{name := command}, message := {array, _}}) ->
+    {continue, {encode, {array, []}}};
+
+recv(#{command := #{name := hello},
+       message := {array, [_, {bulk, <<"3">>}]},
+       data := #{protocol := Protocol} = Data}) ->
+    {continue,
+     Data#{protocol := Protocol#{version => 3}},
+     {encode,
+      {map,
+       [{{bulk, <<"server">>}, {bulk, <<"pgec">>}},
+        {{bulk, <<"version">>}, {bulk, pgec:version()}},
+        {{bulk,<<"proto">>}, {integer, 3}},
+        {{bulk, <<"id">>}, {integer, erlang:phash2(self())}},
+        {{bulk, <<"mode">>}, {bulk, <<"standalone">>}},
+        {{bulk, <<"role">>}, {bulk, <<"master">>}},
+        {{bulk, <<"modules">>}, {array, []}}]}}};
+
+recv(#{command := #{name := hello},
+       message := {array, [_, {bulk, <<"2">>}]},
+       data := #{protocol := Protocol} = Data}) ->
+    {continue,
+     Data#{protocol := Protocol#{version => 2}},
+     {encode,
+      {array,
+       [{bulk, <<"server">>}, {bulk, <<"pgec">>},
+        {bulk, <<"version">>}, {bulk, pgec:version()},
+        {bulk, <<"proto">>}, {integer, 2},
+        {bulk, <<"id">>}, {integer, erlang:phash2(self())},
+        {bulk, <<"mode">>}, {bulk, <<"standalone">>},
+        {bulk, <<"role">>}, {bulk, <<"master">>},
+        {bulk, <<"modules">>}, {array, []}]}}};
+
+recv(#{command := #{name := hgetall}, message := {array, [_, {bulk, Key}]}}) ->
     try lookup(ptk(Key)) of
         {ok, #{metadata := Metadata, row := Row}} ->
 
@@ -67,8 +104,11 @@ lookup(PTK) ->
 
     case metadata(PTK) of
         [{_, Metadata}] ->
+            ?LOG_DEBUG(#{metadata => Metadata}),
+
             case lookup(Metadata, PTK) of
                 [Row] ->
+                    ?LOG_DEBUG(#{row => Row}),
                     {ok, #{metadata => Metadata, row => Row, ptk => PTK}};
 
                 [] ->
@@ -112,4 +152,5 @@ ptk(PTK) ->
 
 
 row(Metadata, Row) ->
+    ?LOG_DEBUG(#{metadata => Metadata, row => Row}),
     pgec_kv:row(Metadata, <<"application/json">>, Row).
