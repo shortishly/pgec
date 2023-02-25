@@ -1,4 +1,4 @@
-%% Copyright (c) 2022 Peter Morgan <peter.james.morgan@gmail.com>
+%% Copyright (c) 2023 Peter Morgan <peter.james.morgan@gmail.com>
 %%
 %% Licensed under the Apache License, Version 2.0 (the "License");
 %% you may not use this file except in compliance with the License.
@@ -13,7 +13,7 @@
 %% limitations under the License.
 
 
--module(pgec_cache_SUITE).
+-module(pgec_cache_resp_SUITE).
 
 
 -compile(export_all).
@@ -50,6 +50,7 @@ init_per_suite(Config) ->
 
     application:set_env(mcd, protocol_callback, pgec_mcd_emulator),
     application:set_env(resp, protocol_callback, pgec_resp_emulator),
+    application:set_env(resp, listener_enabled, true),
 
     {ok, _} = pgec:start(),
 
@@ -112,7 +113,7 @@ init_per_suite(Config) ->
       Columns},
      {data_row,
       [Publication,
-       <<"public">>,
+       Schema,
        Table]},
      {command_complete,
       {select,1}}] = pgmp_connection_sync:execute(#{}),
@@ -137,22 +138,27 @@ init_per_suite(Config) ->
     ct:log("publication: ~p~n", [[pgmp_rep_log_ets, Publication]]),
     ct:log("get_members: ~p~n", [pgmp_pg:get_members([pgmp_rep_log_ets, Publication])]),
 
+    {ok, Client} = resp_client:start(),
+
     [{manager, Manager},
      {publication, Publication},
+     {schema, Schema},
      {table, Table},
      {port, 8080},
+     {client, Client},
      {replica, binary_to_atom(Table)} | Config].
 
 
 update_test(Config) ->
     Manager = ?config(manager, Config),
     Table = ?config(table, Config),
+    Schema = ?config(schema, Config),
     Replica = ?config(replica, Config),
     Port = ?config(port, Config),
     Publication = ?config(publication, Config),
 
-    ct:log("table: ~p,~nreplica: ~p,~nport: ~p,~npublication: ~p~n",
-           [Table, Replica, Port, Publication]),
+    ct:log("schema: ~p,~ntable: ~p,~nreplica: ~p,~nport: ~p,~npublication: ~p~n",
+           [Schema, Table, Replica, Port, Publication]),
 
     {reply, ok} = gen_statem:receive_response(
                     pgmp_rep_log_ets:when_ready(
@@ -188,34 +194,23 @@ update_test(Config) ->
               ets:lookup(Replica, K)
       end),
 
-    URL = uri_string:recompose(
-            #{host => "localhost",
-              path => lists:join("/", [Publication, Table, integer_to_list(K)]),
-              port => Port,
-              scheme => "http"}),
+    [{array, _} = KV] = send_sync(
+                          Config,
+                          {array,
+                           [{bulk, "HGETALL"},
+                            {bulk,
+                             lists:join(
+                               ".", [Publication, Table, integer_to_list(K)])}]}),
 
-    ct:log("~p~n", [URL]),
+    ct:log("hgetall: ~p~n", [KV]),
 
-    {ok,
-     {{"HTTP/1.1", 200, "OK"},
-      [{"date", _},
-       {"server", "Cowboy"},
-       {"content-length", _},
-       {"content-type", "application/json"}],
-      JSON}} = httpc:request(
-                 get,
-                 {URL, []},
-                 [{timeout, 1_000}],
-                 [{body_format, binary}]),
-
-    #{<<"v">> := V} = jsx:decode(JSON).
+    #{<<"v">> := V} = as_map(KV).
 
 
 delete_test(Config) ->
     Manager = ?config(manager, Config),
     Table = ?config(table, Config),
     Replica = ?config(replica, Config),
-    Port = ?config(port, Config),
     Publication = ?config(publication, Config),
 
     {reply, ok} = gen_statem:receive_response(
@@ -250,40 +245,19 @@ delete_test(Config) ->
               ets:lookup(Replica, K)
       end),
 
-    URL = uri_string:recompose(
-            #{host => "localhost",
-              path => lists:join("/", [Publication, Table, integer_to_list(K)]),
-              port => Port,
-              scheme => "http"}),
-
-    ct:log("~p~n", [URL]),
-
-    {ok,
-     {{"HTTP/1.1", 404, "Not Found"},
-      [{"date", _},
-       {"server", "Cowboy"},
-       {"content-length", _},
-       {"content-type", "application/json"}],
-      JSON}} = httpc:request(
-                 get,
-                 {URL, []},
-                 [{timeout, 1_000}],
-                 [{body_format, binary}]),
-
-    ct:log("~p~n", [JSON]),
-
-    ?assertEqual(
-    #{<<"keys">> => [integer_to_binary(K)],
-      <<"publication">> => Publication,
-      <<"table">> => Table},
-       jsx:decode(JSON)).
+    [{array,[]}] = send_sync(
+                     Config,
+                     {array,
+                      [{bulk, "HGETALL"},
+                       {bulk,
+                        lists:join(
+                          ".", [Publication, Table, integer_to_list(K)])}]}).
 
 
 insert_test(Config) ->
     Manager = ?config(manager, Config),
     Table = ?config(table, Config),
     Replica = ?config(replica, Config),
-    Port = ?config(port, Config),
     Publication = ?config(publication, Config),
 
     {reply, ok} = gen_statem:receive_response(
@@ -316,27 +290,17 @@ insert_test(Config) ->
               ets:lookup(Replica, K)
       end),
 
-    URL = uri_string:recompose(
-            #{host => "localhost",
-              path => lists:join("/", [Publication, Table, integer_to_list(K)]),
-              port => Port,
-              scheme => "http"}),
+    [{array, _} = KV] = send_sync(
+                          Config,
+                          {array,
+                           [{bulk, "HGETALL"},
+                            {bulk,
+                             lists:join(
+                               ".", [Publication, Table, integer_to_list(K)])}]}),
 
-    ct:log("~p~n", [URL]),
+    ct:log("hgetall: ~p~n", [KV]),
 
-    {ok,
-     {{"HTTP/1.1", 200, "OK"},
-      [{"date", _},
-       {"server", "Cowboy"},
-       {"content-length", _},
-       {"content-type", "application/json"}],
-      JSON}} = httpc:request(
-                 get,
-                 {URL, []},
-                 [{timeout, 1_000}],
-                 [{body_format, binary}]),
-
-    #{<<"v">> := V} = jsx:decode(JSON).
+    #{<<"v">> := V} = as_map(KV).
 
 
 wait_for(Expected, Check) ->
@@ -371,7 +335,9 @@ wait_for(Expected, Check, N) ->
 
 end_per_suite(Config) ->
     Table = ?config(table, Config),
-    _Publication = ?config(publication, Config),
+    C = ?config(client, Config),
+
+    ok = gen_statem:stop(C),
 
     ct:log("~s: ~p~n",
            [Table,
@@ -385,7 +351,6 @@ end_per_suite(Config) ->
     ok = application:stop(pgmp),
     ok = application:stop(mcd),
     ok = application:stop(resp).
-
 
 
 alpha(N) ->
@@ -409,3 +374,22 @@ pick(N, Pool, A) ->
                    Pool,
                    [lists:nth(rand:uniform(length(Pool)), Pool) | A]).
 
+
+send_sync(Config, Data) ->
+    Client = ?config(client, Config),
+    {reply, Reply} = gen_statem:receive_response(
+                       resp_client:send(
+                         #{server_ref => Client,
+                           data => Data})),
+    Reply.
+
+
+as_map({array, L}) ->
+    ?FUNCTION_NAME(L, #{}).
+
+
+as_map([{bulk, K}, {bulk, V} | T], A) ->
+    ?FUNCTION_NAME(T, A#{K => V});
+
+as_map([], A) ->
+    A.
