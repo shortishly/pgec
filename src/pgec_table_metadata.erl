@@ -91,8 +91,12 @@ handle_event(
       pgec_metadata,
       maps:fold(
         fun
-            ({_Namespace, Name}, Data, A) ->
-                [{{Publication, Name}, Data} | A]
+            ({Namespace, Name},
+             #{columns := Columns, oids := OIDs} = Data,
+             A) ->
+                [{{Publication, Name},
+                  Data#{coids => maps:from_list(lists:zip(Columns, OIDs)),
+                        namespace => Namespace}} | A]
         end,
         [],
         Metadata)),

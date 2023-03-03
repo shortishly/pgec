@@ -40,7 +40,7 @@ services:
       - all
   postgres:
     image:
-      postgres:${POSTGRES_VERSION:-15.1}
+      ${POSTGRES_IMAGE:-postgres:${POSTGRES_VERSION:-15.1}}
     environment:
       PGUSER: postgres
       POSTGRES_PASSWORD: postgres

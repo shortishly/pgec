@@ -62,7 +62,7 @@ init_per_suite(Config) ->
     [{command_complete,
       create_table}] = pgmp_connection_sync:query(
                          #{sql => io_lib:format(
-                                    "create table ~s (k serial primary key, v text)",
+                                    "create table ~s (k uuid default gen_random_uuid() primary key, v text, w integer default null)",
                                     [Table])}),
 
 
@@ -149,6 +149,762 @@ init_per_suite(Config) ->
      {replica, binary_to_atom(Table)} | Config].
 
 
+ping_simple_test(Config) ->
+    [{string,
+      <<"pong">>}] = send_sync(
+                       Config,
+                       {array,
+                        [{bulk, "ping"}]}).
+
+
+ping_bulk_test(Config) ->
+    Greeting = alpha(15),
+    [{bulk, Greeting}] = send_sync(
+                           Config,
+                           {array,
+                            [{bulk, "ping"},
+                             {bulk, Greeting}]}).
+
+
+resp_hello3_test(Config) ->
+    ?assertMatch(
+       [{map,
+         [{{bulk, <<"server">>}, {bulk, <<"pgec">>}},
+          {{bulk, <<"version">>}, {bulk, _}},
+          {{bulk,<<"proto">>}, {integer, 3}},
+          {{bulk, <<"id">>}, {integer, _}},
+          {{bulk, <<"mode">>}, {bulk, <<"standalone">>}},
+          {{bulk, <<"role">>}, {bulk, <<"master">>}},
+          {{bulk, <<"modules">>}, {array, []}}]}],
+       send_sync(
+         Config,
+         {array,
+          [{bulk, "hello"},
+           {bulk, "3"}]})).
+
+
+resp_hello2_test(Config) ->
+    ?assertMatch(
+       [{array,
+         [{bulk, <<"server">>}, {bulk, <<"pgec">>},
+          {bulk, <<"version">>}, {bulk, _},
+          {bulk, <<"proto">>}, {integer, 2},
+          {bulk, <<"id">>}, {integer, _},
+          {bulk, <<"mode">>}, {bulk, <<"standalone">>},
+          {bulk, <<"role">>}, {bulk, <<"master">>},
+          {bulk, <<"modules">>}, {array, []}]}],
+       send_sync(
+         Config,
+         {array,
+          [{bulk, "hello"},
+           {bulk, "2"}]})).
+
+
+resp_hello_test(Config) ->
+    ?assertMatch(
+       [{array,
+         [{bulk, <<"server">>}, {bulk, <<"pgec">>},
+          {bulk, <<"version">>}, {bulk, _},
+          {bulk, <<"proto">>}, {integer, 2},
+          {bulk, <<"id">>}, {integer, _},
+          {bulk, <<"mode">>}, {bulk, <<"standalone">>},
+          {bulk, <<"role">>}, {bulk, <<"master">>},
+          {bulk, <<"modules">>}, {array, []}]}],
+       send_sync(
+         Config,
+         {array,
+          [{bulk, "hello"}]})).
+
+
+exists_test(Config) ->
+    Manager = ?config(manager, Config),
+    Table = ?config(table, Config),
+    Schema = ?config(schema, Config),
+    Replica = ?config(replica, Config),
+    Port = ?config(port, Config),
+    Publication = ?config(publication, Config),
+
+    ct:log("schema: ~p,~ntable: ~p,~nreplica: ~p,~nport: ~p,~npublication: ~p~n",
+           [Schema, Table, Replica, Port, Publication]),
+
+    {reply, ok} = gen_statem:receive_response(
+                    pgmp_rep_log_ets:when_ready(
+                      #{server_ref => Manager})),
+
+    {K, _, _} = Existing = pick_one(ets:tab2list(Replica)),
+    ct:log("existing: ~p~n", [Existing]),
+
+    [{row_description, _},
+     {data_row, [NotPresent]},
+     {command_complete, {select, 1}}] = pgmp_connection_sync:query(
+                                          #{sql => "select gen_random_uuid()"}),
+
+    [{integer, 1}] = send_sync(
+                       Config,
+                       {array,
+                        [{bulk, "exists"},
+
+                         {bulk,
+                          lists:join(
+                            ".", [Publication, Table, K])},
+
+                         {bulk,
+                          lists:join(
+                            ".", ["zzzz", Table, K])},
+
+                         {bulk,
+                          lists:join(
+                            ".", [Publication, "zzzz", K])},
+
+                         {bulk,
+                          lists:join(
+                            ".", [Publication, Table, NotPresent])}]}).
+
+
+hexists_test(Config) ->
+    Manager = ?config(manager, Config),
+    Table = ?config(table, Config),
+    Schema = ?config(schema, Config),
+    Replica = ?config(replica, Config),
+    Port = ?config(port, Config),
+    Publication = ?config(publication, Config),
+
+    ct:log("schema: ~p,~ntable: ~p,~nreplica: ~p,~nport: ~p,~npublication: ~p~n",
+           [Schema, Table, Replica, Port, Publication]),
+
+    {reply, ok} = gen_statem:receive_response(
+                    pgmp_rep_log_ets:when_ready(
+                      #{server_ref => Manager})),
+
+    {K, _, _} = Existing = pick_one(ets:tab2list(Replica)),
+    ct:log("existing: ~p~n", [Existing]),
+
+    [{integer, 0}] = send_sync(
+                       Config,
+                       {array,
+                        [{bulk, "hexists"},
+                         {bulk,
+                          [lists:join(
+                             ".",
+                             ["zzzz", Table, K])]},
+                         {bulk, "k"}]}),
+
+    [{integer, 0}] = send_sync(
+                       Config,
+                       {array,
+                        [{bulk, "hexists"},
+                         {bulk,
+                          lists:join(
+                            ".",
+                            [Publication, "zzzz", K])},
+                         {bulk, "k"}]}),
+
+    [{integer, 0}] = send_sync(
+                       Config,
+                       {array,
+                        [{bulk, "hexists"},
+                         {bulk,
+                          lists:join(
+                            ".",
+                            [Publication, Table, K])},
+                         {bulk, "zzzz"}]}),
+
+    [{integer, 1}] = send_sync(
+                       Config,
+                       {array,
+                        [{bulk, "hexists"},
+                         {bulk,
+                          lists:join(
+                            ".",
+                            [Publication, Table, K])},
+                         {bulk, "k"}]}),
+
+    [{integer, 1}] = send_sync(
+                       Config,
+                       {array,
+                        [{bulk, "hexists"},
+                         {bulk,
+                          lists:join(
+                            ".",
+                            [Publication, Table, K])},
+                         {bulk, "v"}]}).
+
+
+hget_test(Config) ->
+    Manager = ?config(manager, Config),
+    Table = ?config(table, Config),
+    Schema = ?config(schema, Config),
+    Replica = ?config(replica, Config),
+    Port = ?config(port, Config),
+    Publication = ?config(publication, Config),
+
+    ct:log("schema: ~p,~ntable: ~p,~nreplica: ~p,~nport: ~p,~npublication: ~p~n",
+           [Schema, Table, Replica, Port, Publication]),
+
+    {reply, ok} = gen_statem:receive_response(
+                    pgmp_rep_log_ets:when_ready(
+                      #{server_ref => Manager})),
+
+    {K, V, _} = Existing = pick_one(ets:tab2list(Replica)),
+    ct:log("existing: ~p~n", [Existing]),
+
+    [{bulk, null}] = send_sync(
+                       Config,
+                       {array,
+                        [{bulk, "hget"},
+                         {bulk,
+                          [lists:join(
+                             ".",
+                             ["zzzz", Table, K])]},
+                         {bulk, "k"}]}),
+
+    [{bulk, null}] = send_sync(
+                       Config,
+                       {array,
+                        [{bulk, "hget"},
+                         {bulk,
+                          lists:join(
+                            ".",
+                            [Publication, "zzzz", K])},
+                         {bulk, "k"}]}),
+
+    [{row_description, _},
+     {data_row, [NotPresent]},
+     {command_complete, {select, 1}}] = pgmp_connection_sync:query(
+                                          #{sql => "select gen_random_uuid()"}),
+
+    [{bulk, null}] = send_sync(
+                       Config,
+                       {array,
+                        [{bulk, "hget"},
+                         {bulk,
+                          lists:join(
+                            ".",
+                            [Publication, Table, NotPresent])},
+                         {bulk, "k"}]}),
+
+    [{bulk, null}] = send_sync(
+                       Config,
+                       {array,
+                        [{bulk, "hget"},
+                         {bulk,
+                          lists:join(
+                            ".",
+                            [Publication, Table, K])},
+                         {bulk, "zzzz"}]}),
+
+    ?assertEqual(
+       [{bulk, K}],
+       send_sync(
+         Config,
+         {array,
+          [{bulk, "hget"},
+           {bulk,
+            lists:join(
+              ".",
+              [Publication, Table, K])},
+           {bulk, "k"}]})),
+
+    [{bulk, V}] = send_sync(
+                    Config,
+                    {array,
+                     [{bulk, "hget"},
+                      {bulk,
+                       lists:join(
+                         ".",
+                         [Publication, Table, K])},
+                      {bulk, "v"}]}).
+
+
+hgetall_test(Config) ->
+    Manager = ?config(manager, Config),
+    Table = ?config(table, Config),
+    Schema = ?config(schema, Config),
+    Replica = ?config(replica, Config),
+    Port = ?config(port, Config),
+    Publication = ?config(publication, Config),
+
+    ct:log("schema: ~p,~ntable: ~p,~nreplica: ~p,~nport: ~p,~npublication: ~p~n",
+           [Schema, Table, Replica, Port, Publication]),
+
+    {reply, ok} = gen_statem:receive_response(
+                    pgmp_rep_log_ets:when_ready(
+                      #{server_ref => Manager})),
+
+    {K, V, _} = Existing = pick_one(ets:tab2list(Replica)),
+    ct:log("existing: ~p~n", [Existing]),
+
+    [{array, []}] = send_sync(
+                      Config,
+                      {array,
+                       [{bulk, "hgetall"},
+                        {bulk,
+                         [lists:join(
+                            ".",
+                            ["zzzz", Table, K])]}]}),
+
+    [{array, []}] = send_sync(
+                      Config,
+                      {array,
+                       [{bulk, "hgetall"},
+                        {bulk,
+                         lists:join(
+                           ".",
+                           [Publication, "zzzz", K])}]}),
+
+    [{row_description, _},
+     {data_row, [NotPresent]},
+     {command_complete, {select, 1}}] = pgmp_connection_sync:query(
+                                          #{sql => "select gen_random_uuid()"}),
+
+    [{array, []}] = send_sync(
+                      Config,
+                      {array,
+                       [{bulk, "hgetall"},
+                        {bulk,
+                         lists:join(
+                           ".",
+                           [Publication, Table, NotPresent])}]}),
+
+    ?assertEqual(
+       [{array,
+         [{bulk, <<"v">>},
+          {bulk, V},
+          {bulk, <<"k">>},
+          {bulk, K}]}],
+       send_sync(
+         Config,
+         {array,
+          [{bulk, "hgetall"},
+           {bulk,
+            lists:join(
+              ".",
+              [Publication, Table, K])}]})).
+
+
+hlen_test(Config) ->
+    Manager = ?config(manager, Config),
+    Table = ?config(table, Config),
+    Schema = ?config(schema, Config),
+    Replica = ?config(replica, Config),
+    Port = ?config(port, Config),
+    Publication = ?config(publication, Config),
+
+    ct:log("schema: ~p,~ntable: ~p,~nreplica: ~p,~nport: ~p,~npublication: ~p~n",
+           [Schema, Table, Replica, Port, Publication]),
+
+    {reply, ok} = gen_statem:receive_response(
+                    pgmp_rep_log_ets:when_ready(
+                      #{server_ref => Manager})),
+
+    {K, _V, _} = Existing = pick_one(ets:tab2list(Replica)),
+    ct:log("existing: ~p~n", [Existing]),
+
+    [{integer, 0}] = send_sync(
+                       Config,
+                       {array,
+                        [{bulk, "hlen"},
+                         {bulk,
+                          [lists:join(
+                             ".",
+                             ["zzzz", Table, K])]}]}),
+
+    [{integer, 0}] = send_sync(
+                       Config,
+                       {array,
+                        [{bulk, "hlen"},
+                         {bulk,
+                          lists:join(
+                            ".",
+                            [Publication, "zzzz", K])}]}),
+
+    [{row_description, _},
+     {data_row, [NotPresent]},
+     {command_complete, {select, 1}}] = pgmp_connection_sync:query(
+                                          #{sql => "select gen_random_uuid()"}),
+
+    [{integer, 0}] = send_sync(
+                       Config,
+                       {array,
+                        [{bulk, "hlen"},
+                         {bulk,
+                          lists:join(
+                            ".",
+                            [Publication, Table, NotPresent])}]}),
+
+    ?assertEqual(
+       [{integer, 2}],
+       send_sync(
+         Config,
+         {array,
+          [{bulk, "hlen"},
+           {bulk,
+            lists:join(
+              ".",
+              [Publication, Table, K])}]})).
+
+
+hkeys_test(Config) ->
+    Manager = ?config(manager, Config),
+    Table = ?config(table, Config),
+    Schema = ?config(schema, Config),
+    Replica = ?config(replica, Config),
+    Port = ?config(port, Config),
+    Publication = ?config(publication, Config),
+
+    ct:log("schema: ~p,~ntable: ~p,~nreplica: ~p,~nport: ~p,~npublication: ~p~n",
+           [Schema, Table, Replica, Port, Publication]),
+
+    {reply, ok} = gen_statem:receive_response(
+                    pgmp_rep_log_ets:when_ready(
+                      #{server_ref => Manager})),
+
+    {K, _V, _} = Existing = pick_one(ets:tab2list(Replica)),
+    ct:log("existing: ~p~n", [Existing]),
+
+    [{array, []}] = send_sync(
+                      Config,
+                      {array,
+                       [{bulk, "hkeys"},
+                        {bulk,
+                         [lists:join(
+                            ".",
+                            ["zzzz", Table, K])]}]}),
+
+    [{array, []}] = send_sync(
+                      Config,
+                      {array,
+                       [{bulk, "hkeys"},
+                        {bulk,
+                         lists:join(
+                           ".",
+                           [Publication, "zzzz", K])}]}),
+
+    [{row_description, _},
+     {data_row, [NotPresent]},
+     {command_complete, {select, 1}}] = pgmp_connection_sync:query(
+                                          #{sql => "select gen_random_uuid()"}),
+
+    [{array, []}] = send_sync(
+                      Config,
+                      {array,
+                       [{bulk, "hkeys"},
+                        {bulk,
+                         lists:join(
+                           ".",
+                           [Publication, Table, NotPresent])}]}),
+
+    ?assertEqual(
+       [{array,
+        [{bulk, <<"v">>},
+         {bulk, <<"k">>}]}],
+       send_sync(
+         Config,
+         {array,
+          [{bulk, "hkeys"},
+           {bulk,
+            lists:join(
+              ".",
+              [Publication, Table, K])}]})).
+
+hset_update_invalid_field_test(Config) ->
+    Manager = ?config(manager, Config),
+    Table = ?config(table, Config),
+    Schema = ?config(schema, Config),
+    Replica = ?config(replica, Config),
+    Port = ?config(port, Config),
+    Publication = ?config(publication, Config),
+
+    ct:log("schema: ~p,~ntable: ~p,~nreplica: ~p,~nport: ~p,~npublication: ~p~n",
+           [Schema, Table, Replica, Port, Publication]),
+
+    {reply, ok} = gen_statem:receive_response(
+                    pgmp_rep_log_ets:when_ready(
+                      #{server_ref => Manager})),
+
+    {K, _, _} = Existing = pick_one(ets:tab2list(Replica)),
+    ct:log("existing: ~p~n", [Existing]),
+
+    V1 = alpha(5),
+
+    ?assertMatch(
+       [{error, _}],
+       send_sync(
+         Config,
+         {array,
+          [{bulk, "hset"},
+           {bulk,
+            lists:join(
+              ".",
+              [Publication, Table, K])},
+           {bulk, "zzzz"},
+           {bulk, V1}]})).
+
+hset_insert_invalid_field_test(Config) ->
+    Manager = ?config(manager, Config),
+    Table = ?config(table, Config),
+    Schema = ?config(schema, Config),
+    Replica = ?config(replica, Config),
+    Port = ?config(port, Config),
+    Publication = ?config(publication, Config),
+
+    ct:log("schema: ~p,~ntable: ~p,~nreplica: ~p,~nport: ~p,~npublication: ~p~n",
+           [Schema, Table, Replica, Port, Publication]),
+
+    {reply, ok} = gen_statem:receive_response(
+                    pgmp_rep_log_ets:when_ready(
+                      #{server_ref => Manager})),
+
+
+    [{row_description, _},
+     {data_row, [NotPresent]},
+     {command_complete, {select, 1}}] = pgmp_connection_sync:query(
+                                          #{sql => "select gen_random_uuid()"}),
+    V1 = alpha(5),
+
+    ?assertMatch(
+       [{error, _}],
+       send_sync(
+         Config,
+         {array,
+          [{bulk, "hset"},
+           {bulk,
+            lists:join(
+              ".",
+              [Publication, Table, NotPresent])},
+           {bulk, "zzzz"},
+           {bulk, V1}]})).
+
+
+hset_update_v_test(Config) ->
+    Manager = ?config(manager, Config),
+    Table = ?config(table, Config),
+    Schema = ?config(schema, Config),
+    Replica = ?config(replica, Config),
+    Port = ?config(port, Config),
+    Publication = ?config(publication, Config),
+
+    ct:log("schema: ~p,~ntable: ~p,~nreplica: ~p,~nport: ~p,~npublication: ~p~n",
+           [Schema, Table, Replica, Port, Publication]),
+
+    {reply, ok} = gen_statem:receive_response(
+                    pgmp_rep_log_ets:when_ready(
+                      #{server_ref => Manager})),
+
+    {K, _, W} = Existing = pick_one(ets:tab2list(Replica)),
+    ct:log("existing: ~p~n", [Existing]),
+
+    V1 = alpha(5),
+
+    ?assertEqual(
+       [{integer, 1}],
+       send_sync(
+         Config,
+         {array,
+          [{bulk, "hset"},
+           {bulk,
+            lists:join(
+              ".",
+              [Publication, Table, K])},
+           {bulk, "v"},
+           {bulk, V1}]})),
+
+    wait_for(
+      [{K, V1, W}],
+      fun
+          () ->
+              ets:lookup(Replica, K)
+      end),
+
+    ?assertEqual(
+       [{array,
+         [{bulk, <<"v">>},
+          {bulk, V1},
+          {bulk, <<"k">>},
+          {bulk, K}]}],
+       send_sync(
+         Config,
+         {array,
+          [{bulk, "hgetall"},
+           {bulk,
+            lists:join(
+              ".",
+              [Publication, Table, K])}]})).
+hset_update_w_test(Config) ->
+    Manager = ?config(manager, Config),
+    Table = ?config(table, Config),
+    Schema = ?config(schema, Config),
+    Replica = ?config(replica, Config),
+    Port = ?config(port, Config),
+    Publication = ?config(publication, Config),
+
+    ct:log("schema: ~p,~ntable: ~p,~nreplica: ~p,~nport: ~p,~npublication: ~p~n",
+           [Schema, Table, Replica, Port, Publication]),
+
+    {reply, ok} = gen_statem:receive_response(
+                    pgmp_rep_log_ets:when_ready(
+                      #{server_ref => Manager})),
+
+    {K, V, null} = Existing = pick_one(ets:tab2list(Replica)),
+    ct:log("existing: ~p~n", [Existing]),
+
+    W1 = 12321,
+
+    ?assertEqual(
+       [{integer, 1}],
+       send_sync(
+         Config,
+         {array,
+          [{bulk, "hset"},
+           {bulk,
+            lists:join(
+              ".",
+              [Publication, Table, K])},
+           {bulk, "w"},
+           {bulk, integer_to_list(W1)}]})),
+
+    wait_for(
+      [{K, V, W1}],
+      fun
+          () ->
+              ets:lookup(Replica, K)
+      end),
+
+    ?assertEqual(
+       [{array,
+         [{bulk, <<"w">>},
+          {bulk, integer_to_binary(W1)},
+          {bulk, <<"v">>},
+          {bulk, V},
+          {bulk, <<"k">>},
+          {bulk, K}]}],
+       send_sync(
+         Config,
+         {array,
+          [{bulk, "hgetall"},
+           {bulk,
+            lists:join(
+              ".",
+              [Publication, Table, K])}]})).
+
+
+hset_update_invalid_type_test(Config) ->
+    Manager = ?config(manager, Config),
+    Table = ?config(table, Config),
+    Schema = ?config(schema, Config),
+    Replica = ?config(replica, Config),
+    Port = ?config(port, Config),
+    Publication = ?config(publication, Config),
+
+    ct:log("schema: ~p,~ntable: ~p,~nreplica: ~p,~nport: ~p,~npublication: ~p~n",
+           [Schema, Table, Replica, Port, Publication]),
+
+    {reply, ok} = gen_statem:receive_response(
+                    pgmp_rep_log_ets:when_ready(
+                      #{server_ref => Manager})),
+
+    {K, V, W} = Existing = pick_one(ets:tab2list(Replica)),
+    ct:log("existing: ~p~n", [Existing]),
+
+    W1 = alpha(5),
+
+    ?assertMatch(
+       [{error, _}],
+       send_sync(
+         Config,
+         {array,
+          [{bulk, "hset"},
+           {bulk,
+            lists:join(
+              ".",
+              [Publication, Table, K])},
+           {bulk, "w"},
+           {bulk, W1}]})),
+
+    wait_for(
+      [{K, V, W}],
+      fun
+          () ->
+              ets:lookup(Replica, K)
+      end),
+
+    ?assertEqual(
+       [{array,
+         [{bulk, <<"v">>},
+          {bulk, V},
+          {bulk, <<"k">>},
+          {bulk, K}]}],
+       send_sync(
+         Config,
+         {array,
+          [{bulk, "hgetall"},
+           {bulk,
+            lists:join(
+              ".",
+              [Publication, Table, K])}]})).
+
+
+hset_insert_test(Config) ->
+    Manager = ?config(manager, Config),
+    Table = ?config(table, Config),
+    Schema = ?config(schema, Config),
+    Replica = ?config(replica, Config),
+    Port = ?config(port, Config),
+    Publication = ?config(publication, Config),
+
+    ct:log("schema: ~p,~ntable: ~p,~nreplica: ~p,~nport: ~p,~npublication: ~p~n",
+           [Schema, Table, Replica, Port, Publication]),
+
+    {reply, ok} = gen_statem:receive_response(
+                    pgmp_rep_log_ets:when_ready(
+                      #{server_ref => Manager})),
+
+    ct:log("~p~n", [lists:sort(ets:tab2list(Replica))]),
+
+    [{row_description, _},
+     {data_row, [K]},
+     {command_complete, {select, 1}}] = pgmp_connection_sync:query(
+                                          #{sql => "select gen_random_uuid()"}),
+    V = alpha(5),
+
+    ct:log("k: ~p, v: ~p~n", [K, V]),
+
+    ?assertEqual(
+       [{integer, 1}],
+       send_sync(
+         Config,
+         {array,
+          [{bulk, "hset"},
+           {bulk,
+            lists:join(
+              ".",
+              [Publication, Table, K])},
+           {bulk, "v"},
+           {bulk, V}]})),
+
+    wait_for(
+      [{K, V, null}],
+      fun
+          () ->
+              ets:lookup(Replica, K)
+      end),
+
+    ?assertEqual(
+       [{array,
+         [{bulk, <<"v">>},
+          {bulk, V},
+          {bulk, <<"k">>},
+          {bulk, K}]}],
+       send_sync(
+         Config,
+         {array,
+          [{bulk, "hgetall"},
+           {bulk,
+            lists:join(
+              ".",
+              [Publication, Table, K])}]})).
+
+
 update_test(Config) ->
     Manager = ?config(manager, Config),
     Table = ?config(table, Config),
@@ -164,7 +920,7 @@ update_test(Config) ->
                     pgmp_rep_log_ets:when_ready(
                       #{server_ref => Manager})),
 
-    {K, _} = Existing = pick_one(ets:tab2list(Replica)),
+    {K, _, W} = Existing = pick_one(ets:tab2list(Replica)),
     ct:log("existing: ~p~n", [Existing]),
 
     [{command_complete, 'begin'}] = pgmp_connection_sync:query(#{sql => "begin"}),
@@ -180,7 +936,7 @@ update_test(Config) ->
                               #{args => [K, V]}),
 
     [{row_description, _},
-     {data_row, [K, V] = Updated},
+     {data_row, [K, V, W] = Updated},
      {command_complete,
       {update, 1}}] =  pgmp_connection_sync:execute(#{}),
 
@@ -197,10 +953,10 @@ update_test(Config) ->
     [{array, _} = KV] = send_sync(
                           Config,
                           {array,
-                           [{bulk, "HGETALL"},
+                           [{bulk, "hgetall"},
                             {bulk,
                              lists:join(
-                               ".", [Publication, Table, integer_to_list(K)])}]}),
+                               ".", [Publication, Table, K])}]}),
 
     ct:log("hgetall: ~p~n", [KV]),
 
@@ -217,7 +973,7 @@ delete_test(Config) ->
                     pgmp_rep_log_ets:when_ready(
                       #{server_ref => Manager})),
 
-    {K, V} = Existing = pick_one(ets:tab2list(Replica)),
+    {K, V, W} = Existing = pick_one(ets:tab2list(Replica)),
     ct:log("existing: ~p~n", [Existing]),
 
     [{command_complete, 'begin'}] = pgmp_connection_sync:query(#{sql => "begin"}),
@@ -231,7 +987,7 @@ delete_test(Config) ->
                               #{args => [K]}),
 
     [{row_description, _},
-     {data_row, [K, V] = Deleted},
+     {data_row, [K, V, W] = Deleted},
      {command_complete,
       {delete, 1}}] =  pgmp_connection_sync:execute(#{}),
 
@@ -248,10 +1004,10 @@ delete_test(Config) ->
     [{array,[]}] = send_sync(
                      Config,
                      {array,
-                      [{bulk, "HGETALL"},
+                      [{bulk, "hgetall"},
                        {bulk,
                         lists:join(
-                          ".", [Publication, Table, integer_to_list(K)])}]}).
+                          ".", [Publication, Table, K])}]}).
 
 
 insert_test(Config) ->
@@ -276,7 +1032,7 @@ insert_test(Config) ->
                               #{args => [alpha(5)]}),
 
     [{row_description, _},
-     {data_row, [K, V] = Inserted},
+     {data_row, [K, V, null] = Inserted},
      {command_complete,
       {insert, 1}}] =  pgmp_connection_sync:execute(#{}),
 
@@ -286,17 +1042,18 @@ insert_test(Config) ->
 
     wait_for(
       [list_to_tuple(Inserted)],
-      fun () ->
+      fun
+          () ->
               ets:lookup(Replica, K)
       end),
 
     [{array, _} = KV] = send_sync(
                           Config,
                           {array,
-                           [{bulk, "HGETALL"},
+                           [{bulk, "hgetall"},
                             {bulk,
                              lists:join(
-                               ".", [Publication, Table, integer_to_list(K)])}]}),
+                               ".", [Publication, Table, K])}]}),
 
     ct:log("hgetall: ~p~n", [KV]),
 

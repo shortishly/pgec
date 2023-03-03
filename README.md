@@ -18,16 +18,16 @@ real-time.
 
 ## Features
 
-- Instrumented with a [Prometheus HTTP Adapter](docs/monitoring.md)
-- Redis API
-- Memcached API
+- PostgreSQL [logical replication support][pgmp] for [cache
+  consistency][shortishly-ccwsr]
+- [Redis compatible API][resp]
+- [Memcached compatible API][mcd]
 - REST API
 - a [compose](docs/compose.md) having PostgreSQL with example data,
   [Grafana][grafana], and [Prometheus][prometheus-io].
-- a [GitHub Codespace](docs/codespaces.md) for development and
-  evaluation.
+- a [GitHub Codespace](docs/codespaces.md) for build and development
 - Support for [row filters and column lists][shortishly-pgec] in
-  PostgreSQL 15.
+  PostgreSQL 15
 
 ## Quick Start
 
@@ -305,8 +305,12 @@ Will return:
 [cli-github-com]: https://cli.github.com
 [docker-com-get-docker]: https://docs.docker.com/get-docker/
 [grafana]: https://grafana.com/
+[mcd]: https://github.com/shortishly/mcd
 [memcached-npmjs-client]: https://www.npmjs.com/package/memcached
 [memcached-org]: https://memcached.org/
+[pgmp]: https://github.com/shortishly/pgmp
 [postgresql-org]: https://www.postgresql.org/
 [prometheus-io]: https://prometheus.io
+[resp]: https://github.com/shortishly/resp
+[shortishly-ccwsr]: https://shortishly.com/blog/cache-consistency-with-streaming-replication/
 [shortishly-pgec]: https://shortishly.com/blog/postgresql-edge-cache/

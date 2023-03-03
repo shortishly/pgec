@@ -17,32 +17,35 @@
 
 
 -export([key/2]).
+-export([keys/2]).
 -export([row/2]).
 -export([row/3]).
 -include_lib("kernel/include/logger.hrl").
 
 
-key(#{keys := Positions, oids := Types} = Metadata, Keys)
+keys(#{keys := Positions, oids := Types}, Keys) ->
+    pgmp_data_row:decode(
+      #{<<"client_encoding">> => <<"UTF8">>},
+      lists:map(
+        fun
+            ({Encoded, KeyOID}) ->
+                {#{format => text, type_oid => KeyOID}, Encoded}
+        end,
+        lists:zip(
+          Keys,
+          lists:map(
+            fun
+                (Position) ->
+                    lists:nth(Position, Types)
+            end,
+            Positions)))).
+
+
+key(#{keys := Positions} = Metadata, Keys)
   when length(Positions) == length(Keys) ->
     ?LOG_DEBUG(#{keys => Keys, metadata => Metadata}),
 
-    case pgmp_data_row:decode(
-           #{<<"client_encoding">> => <<"UTF8">>},
-           lists:map(
-           fun
-               ({Encoded, KeyOID}) ->
-                   {#{format => text, type_oid => KeyOID}, Encoded}
-           end,
-           lists:zip(
-             Keys,
-
-             lists:map(
-               fun
-                   (Position) ->
-                       lists:nth(Position, Types)
-               end,
-               Positions)))) of
-
+    case keys(Metadata, Keys) of
         [Primary] ->
             Primary;
 
