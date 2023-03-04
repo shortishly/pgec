@@ -13,7 +13,7 @@
 %% limitations under the License.
 
 
--module(pgec_cache_resp_SUITE).
+-module(pgec_resp_cache_SUITE).
 
 
 -compile(export_all).
@@ -41,6 +41,8 @@ init_per_suite(Config) ->
     application:set_env(pgmp, mm_trace, false),
     application:set_env(pgmp, mm_log, true),
     application:set_env(pgmp, mm_log_n, 50),
+    application:set_env(pgmp, codec_jsonb, jsx),
+    application:set_env(pgmp, codec_json, jsx),
 
     application:set_env(pgmp, rep_log_trace, false),
     application:set_env(pgmp, rep_log_ets_trace, false),
@@ -133,6 +135,8 @@ init_per_suite(Config) ->
              end,
              5),
 
+    ct:pal("codec(json): ~p~n", [pgmp_config:codec(json)]),
+    ct:pal("codec(jsonb): ~p~n", [pgmp_config:codec(jsonb)]),
     ct:log("manager: ~p~n", [sys:get_state(Manager)]),
     ct:log("which_groups: ~p~n", [pgmp_pg:which_groups()]),
     ct:log("publication: ~p~n", [[pgmp_rep_log_ets, Publication]]),
@@ -730,6 +734,7 @@ hset_update_v_test(Config) ->
             lists:join(
               ".",
               [Publication, Table, K])}]})).
+
 hset_update_w_test(Config) ->
     Manager = ?config(manager, Config),
     Table = ?config(table, Config),
@@ -1104,10 +1109,7 @@ end_per_suite(Config) ->
                            "drop table ~s cascade",
                            [Table]))})]),
 
-    ok = application:stop(pgec),
-    ok = application:stop(pgmp),
-    ok = application:stop(mcd),
-    ok = application:stop(resp).
+    common:purge_applications().
 
 
 alpha(N) ->

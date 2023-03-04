@@ -1,4 +1,4 @@
-%% Copyright (c) 2022 Peter Morgan <peter.james.morgan@gmail.com>
+%% Copyright (c) 2023 Peter Morgan <peter.james.morgan@gmail.com>
 %%
 %% Licensed under the Apache License, Version 2.0 (the "License");
 %% you may not use this file except in compliance with the License.
@@ -13,7 +13,7 @@
 %% limitations under the License.
 
 
--module(pgec_cache_SUITE).
+-module(pgec_resp_json_SUITE).
 
 
 -compile(export_all).
@@ -41,6 +41,8 @@ init_per_suite(Config) ->
     application:set_env(pgmp, mm_trace, false),
     application:set_env(pgmp, mm_log, true),
     application:set_env(pgmp, mm_log_n, 50),
+    application:set_env(pgmp, codec_jsonb, jsx),
+    application:set_env(pgmp, codec_json, jsx),
 
     application:set_env(pgmp, rep_log_trace, false),
     application:set_env(pgmp, rep_log_ets_trace, false),
@@ -50,6 +52,7 @@ init_per_suite(Config) ->
 
     application:set_env(mcd, protocol_callback, pgec_mcd_emulator),
     application:set_env(resp, protocol_callback, pgec_resp_emulator),
+    application:set_env(resp, listener_enabled, true),
 
     {ok, _} = pgec:start(),
 
@@ -61,7 +64,7 @@ init_per_suite(Config) ->
     [{command_complete,
       create_table}] = pgmp_connection_sync:query(
                          #{sql => io_lib:format(
-                                    "create table ~s (k serial primary key, v text)",
+                                    "create table ~s (k uuid default gen_random_uuid() primary key, a json, b jsonb)",
                                     [Table])}),
 
 
@@ -76,14 +79,17 @@ init_per_suite(Config) ->
 
     [{parse_complete, []}] = pgmp_connection_sync:parse(
                                #{sql => io_lib:format(
-                                          "insert into ~s (v) values ($1) returning *",
+                                          "insert into ~s (a, b) values ($1, $2) returning *",
                                           [Table])}),
 
     lists:map(
       fun
           (_) ->
+
+              JSON = jsx:encode(#{alpha(5) => rand:uniform(1000)}),
+
               [{bind_complete, []}] = pgmp_connection_sync:bind(
-                                        #{args => [alpha(5)]}),
+                                        #{args => [JSON, JSON]}),
 
               [{row_description, _},
                {data_row, Row},
@@ -112,7 +118,7 @@ init_per_suite(Config) ->
       Columns},
      {data_row,
       [Publication,
-       <<"public">>,
+       Schema,
        Table]},
      {command_complete,
       {select,1}}] = pgmp_connection_sync:execute(#{}),
@@ -132,211 +138,99 @@ init_per_suite(Config) ->
              end,
              5),
 
+    ct:pal("codec(json): ~p~n", [pgmp_config:codec(json)]),
+    ct:pal("codec(jsonb): ~p~n", [pgmp_config:codec(jsonb)]),
     ct:log("manager: ~p~n", [sys:get_state(Manager)]),
     ct:log("which_groups: ~p~n", [pgmp_pg:which_groups()]),
     ct:log("publication: ~p~n", [[pgmp_rep_log_ets, Publication]]),
     ct:log("get_members: ~p~n", [pgmp_pg:get_members([pgmp_rep_log_ets, Publication])]),
 
+    {ok, Client} = resp_client:start(),
+
     [{manager, Manager},
      {publication, Publication},
+     {schema, Schema},
      {table, Table},
      {port, 8080},
+     {client, Client},
      {replica, binary_to_atom(Table)} | Config].
 
 
-update_test(Config) ->
+hgetall_test(Config) ->
     Manager = ?config(manager, Config),
     Table = ?config(table, Config),
+    Schema = ?config(schema, Config),
     Replica = ?config(replica, Config),
     Port = ?config(port, Config),
     Publication = ?config(publication, Config),
 
-    ct:log("table: ~p,~nreplica: ~p,~nport: ~p,~npublication: ~p~n",
-           [Table, Replica, Port, Publication]),
+    ct:log("schema: ~p,~ntable: ~p,~nreplica: ~p,~nport: ~p,~npublication: ~p~n",
+           [Schema, Table, Replica, Port, Publication]),
 
     {reply, ok} = gen_statem:receive_response(
                     pgmp_rep_log_ets:when_ready(
                       #{server_ref => Manager})),
 
-    {K, _} = Existing = pick_one(ets:tab2list(Replica)),
+    {K, A, B} = Existing = pick_one(ets:tab2list(Replica)),
     ct:log("existing: ~p~n", [Existing]),
-
-    [{command_complete, 'begin'}] = pgmp_connection_sync:query(#{sql => "begin"}),
-
-    [{parse_complete, []}] = pgmp_connection_sync:parse(
-                               #{sql => io_lib:format(
-                                          "update ~s set v = $2 where k = $1 returning *",
-                                          [Table])}),
-
-    V = alpha(5),
-
-    [{bind_complete, []}] = pgmp_connection_sync:bind(
-                              #{args => [K, V]}),
-
-    [{row_description, _},
-     {data_row, [K, V] = Updated},
-     {command_complete,
-      {update, 1}}] =  pgmp_connection_sync:execute(#{}),
-
-    ct:log("updated: ~p~n", [Updated]),
-
-    [{command_complete, commit}] = pgmp_connection_sync:query(#{sql => "commit"}),
-
-    wait_for(
-      [list_to_tuple(Updated)],
-      fun () ->
-              ets:lookup(Replica, K)
-      end),
-
-    URL = uri_string:recompose(
-            #{host => "localhost",
-              path => lists:join("/", [Publication, Table, integer_to_list(K)]),
-              port => Port,
-              scheme => "http"}),
-
-    ct:log("~p~n", [URL]),
-
-    {ok,
-     {{"HTTP/1.1", 200, "OK"},
-      [{"date", _},
-       {"server", "Cowboy"},
-       {"content-length", _},
-       {"content-type", "application/json"}],
-      JSON}} = httpc:request(
-                 get,
-                 {URL, []},
-                 [{timeout, 1_000}],
-                 [{body_format, binary}]),
-
-    #{<<"v">> := V} = jsx:decode(JSON).
-
-
-delete_test(Config) ->
-    Manager = ?config(manager, Config),
-    Table = ?config(table, Config),
-    Replica = ?config(replica, Config),
-    Port = ?config(port, Config),
-    Publication = ?config(publication, Config),
-
-    {reply, ok} = gen_statem:receive_response(
-                    pgmp_rep_log_ets:when_ready(
-                      #{server_ref => Manager})),
-
-    {K, V} = Existing = pick_one(ets:tab2list(Replica)),
-    ct:log("existing: ~p~n", [Existing]),
-
-    [{command_complete, 'begin'}] = pgmp_connection_sync:query(#{sql => "begin"}),
-
-    [{parse_complete, []}] = pgmp_connection_sync:parse(
-                               #{sql => io_lib:format(
-                                          "delete from ~s where k = $1 returning *",
-                                          [Table])}),
-
-    [{bind_complete, []}] = pgmp_connection_sync:bind(
-                              #{args => [K]}),
-
-    [{row_description, _},
-     {data_row, [K, V] = Deleted},
-     {command_complete,
-      {delete, 1}}] =  pgmp_connection_sync:execute(#{}),
-
-    ct:log("deleted: ~p~n", [Deleted]),
-
-    [{command_complete, commit}] = pgmp_connection_sync:query(#{sql => "commit"}),
-
-    wait_for(
-      [],
-      fun () ->
-              ets:lookup(Replica, K)
-      end),
-
-    URL = uri_string:recompose(
-            #{host => "localhost",
-              path => lists:join("/", [Publication, Table, integer_to_list(K)]),
-              port => Port,
-              scheme => "http"}),
-
-    ct:log("~p~n", [URL]),
-
-    {ok,
-     {{"HTTP/1.1", 404, "Not Found"},
-      [{"date", _},
-       {"server", "Cowboy"},
-       {"content-length", _},
-       {"content-type", "application/json"}],
-      JSON}} = httpc:request(
-                 get,
-                 {URL, []},
-                 [{timeout, 1_000}],
-                 [{body_format, binary}]),
-
-    ct:log("~p~n", [JSON]),
 
     ?assertEqual(
-    #{<<"keys">> => [integer_to_binary(K)],
-      <<"publication">> => Publication,
-      <<"table">> => Table},
-       jsx:decode(JSON)).
+       [{array,
+         [{bulk, <<"k">>},
+          {bulk, K},
+          {bulk, <<"b">>},
+          {bulk, B},
+          {bulk, <<"a">>},
+          {bulk, A}]}],
+       send_sync(
+         Config,
+         {array,
+          [{bulk, "hgetall"},
+           {bulk,
+            lists:join(
+              ".",
+              [Publication, Table, K])}]})).
 
 
-insert_test(Config) ->
+hget_test(Config) ->
     Manager = ?config(manager, Config),
     Table = ?config(table, Config),
+    Schema = ?config(schema, Config),
     Replica = ?config(replica, Config),
     Port = ?config(port, Config),
     Publication = ?config(publication, Config),
+
+    ct:log("schema: ~p,~ntable: ~p,~nreplica: ~p,~nport: ~p,~npublication: ~p~n",
+           [Schema, Table, Replica, Port, Publication]),
 
     {reply, ok} = gen_statem:receive_response(
                     pgmp_rep_log_ets:when_ready(
                       #{server_ref => Manager})),
 
+    {K, A, B} = Existing = pick_one(ets:tab2list(Replica)),
+    ct:log("existing: ~p~n", [Existing]),
 
-    [{command_complete, 'begin'}] = pgmp_connection_sync:query(#{sql => "begin"}),
+    ?assertEqual(
+       [{bulk, A}],
+       send_sync(
+         Config,
+         {array,
+          [{bulk, "hget"},
+           {bulk,
+            lists:join(
+              ".",
+              [Publication, Table, K])},
+           {bulk, "a"}]})),
 
-    [{parse_complete, []}] = pgmp_connection_sync:parse(
-                               #{sql => io_lib:format(
-                                          "insert into ~s (v) values ($1) returning *",
-                                          [Table])}),
-
-    [{bind_complete, []}] = pgmp_connection_sync:bind(
-                              #{args => [alpha(5)]}),
-
-    [{row_description, _},
-     {data_row, [K, V] = Inserted},
-     {command_complete,
-      {insert, 1}}] =  pgmp_connection_sync:execute(#{}),
-
-    ct:log("inserted: ~p~n", [Inserted]),
-
-    [{command_complete, commit}] = pgmp_connection_sync:query(#{sql => "commit"}),
-
-    wait_for(
-      [list_to_tuple(Inserted)],
-      fun () ->
-              ets:lookup(Replica, K)
-      end),
-
-    URL = uri_string:recompose(
-            #{host => "localhost",
-              path => lists:join("/", [Publication, Table, integer_to_list(K)]),
-              port => Port,
-              scheme => "http"}),
-
-    ct:log("~p~n", [URL]),
-
-    {ok,
-     {{"HTTP/1.1", 200, "OK"},
-      [{"date", _},
-       {"server", "Cowboy"},
-       {"content-length", _},
-       {"content-type", "application/json"}],
-      JSON}} = httpc:request(
-                 get,
-                 {URL, []},
-                 [{timeout, 1_000}],
-                 [{body_format, binary}]),
-
-    #{<<"v">> := V} = jsx:decode(JSON).
+    [{bulk, B}] = send_sync(
+                    Config,
+                    {array,
+                     [{bulk, "hget"},
+                      {bulk,
+                       lists:join(
+                         ".",
+                         [Publication, Table, K])},
+                      {bulk, "b"}]}).
 
 
 wait_for(Expected, Check) ->
@@ -371,7 +265,9 @@ wait_for(Expected, Check, N) ->
 
 end_per_suite(Config) ->
     Table = ?config(table, Config),
-    _Publication = ?config(publication, Config),
+    C = ?config(client, Config),
+
+    ok = gen_statem:stop(C),
 
     ct:log("~s: ~p~n",
            [Table,
@@ -405,3 +301,22 @@ pick(N, Pool, A) ->
                    Pool,
                    [lists:nth(rand:uniform(length(Pool)), Pool) | A]).
 
+
+send_sync(Config, Data) ->
+    Client = ?config(client, Config),
+    {reply, Reply} = gen_statem:receive_response(
+                       resp_client:send(
+                         #{server_ref => Client,
+                           data => Data})),
+    Reply.
+
+
+as_map({array, L}) ->
+    ?FUNCTION_NAME(L, #{}).
+
+
+as_map([{bulk, K}, {bulk, V} | T], A) ->
+    ?FUNCTION_NAME(T, A#{K => V});
+
+as_map([], A) ->
+    A.

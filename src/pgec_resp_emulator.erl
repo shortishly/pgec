@@ -245,6 +245,12 @@ recv(#{command := #{name := hget},
                    #{Field := Value} when is_float(Value) ->
                        float_to_list(Value, [short]);
 
+                   #{Field := Value} when is_map(Value) ->
+                       apply(
+                         pgmp_config:codec(json),
+                         encode,
+                         [Value]);
+
                    #{Field := Value} when Value /= null ->
                        Value;
 
@@ -277,6 +283,14 @@ recv(#{command := #{name := hgetall},
 
                      (K, V, A) when is_float(V) ->
                          [{bulk, K}, {bulk, float_to_list(V, [short])} | A];
+
+                     (K, V, A) when is_map(V) ->
+                         [{bulk, K},
+                          {bulk,
+                           apply(
+                             pgmp_config:codec(json),
+                             encode,
+                             [V])} | A];
 
                      (K, V, A) ->
                          [{bulk, K}, {bulk, V} | A]
