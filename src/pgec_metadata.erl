@@ -19,6 +19,8 @@
 -export([callback_mode/0]).
 -export([init/1]).
 -export([start_link/0]).
+-export([lookup/1]).
+-include_lib("kernel/include/logger.hrl").
 
 
 start_link() ->
@@ -34,3 +36,8 @@ callback_mode() ->
 
 init([]) ->
     {ok, ready, #{metadata => ets:new(?MODULE, [public, named_table])}}.
+
+
+lookup(#{publication := Publication, table := Table} = Arg) ->
+    ?LOG_DEBUG(#{arg => Arg}),
+    ets:lookup(?MODULE, {Publication, Table}).

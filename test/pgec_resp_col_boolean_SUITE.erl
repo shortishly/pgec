@@ -13,7 +13,7 @@
 %% limitations under the License.
 
 
--module(pgec_cache_resp_SUITE).
+-module(pgec_resp_col_boolean_SUITE).
 
 
 -compile(export_all).
@@ -41,6 +41,8 @@ init_per_suite(Config) ->
     application:set_env(pgmp, mm_trace, false),
     application:set_env(pgmp, mm_log, true),
     application:set_env(pgmp, mm_log_n, 50),
+    application:set_env(pgmp, codec_jsonb, jsx),
+    application:set_env(pgmp, codec_json, jsx),
 
     application:set_env(pgmp, rep_log_trace, false),
     application:set_env(pgmp, rep_log_ets_trace, false),
@@ -57,12 +59,26 @@ init_per_suite(Config) ->
     ct:log("pgmp logical replication name: ~p~n",
            [pgmp_config:replication(logical, publication_names)]),
 
-    logger:set_module_level([], debug),
+    logger:set_handler_config(
+      default,
+      #{formatter => {logger_formatter,
+                      #{template => [[logger_formatter, header],
+                                     {pid, [" ", pid, ""], ""},
+                                     {mfa, [" ", mfa, ":", line], ""},
+                                     "\n",
+                                     msg,
+                                     "\n"],
+                        legacy_header => true,
+                        single_line => false}}}),
+
+    logger:set_module_level(
+      [],
+      debug),
 
     [{command_complete,
       create_table}] = pgmp_connection_sync:query(
                          #{sql => io_lib:format(
-                                    "create table ~s (k serial primary key, v text)",
+                                    "create table ~s (k uuid default gen_random_uuid() primary key, v boolean)",
                                     [Table])}),
 
 
@@ -73,27 +89,6 @@ init_per_suite(Config) ->
                                           [Publication, Table])}),
 
     [{command_complete, 'begin'}] = pgmp_connection_sync:query(#{sql => "begin"}),
-
-
-    [{parse_complete, []}] = pgmp_connection_sync:parse(
-                               #{sql => io_lib:format(
-                                          "insert into ~s (v) values ($1) returning *",
-                                          [Table])}),
-
-    lists:map(
-      fun
-          (_) ->
-              [{bind_complete, []}] = pgmp_connection_sync:bind(
-                                        #{args => [alpha(5)]}),
-
-              [{row_description, _},
-               {data_row, Row},
-               {command_complete,
-                {insert, 1}}] =  pgmp_connection_sync:execute(#{}),
-
-              list_to_tuple(Row)
-      end,
-      lists:seq(1, 50)),
 
     Columns = [<<"pubname">>,
                <<"schemaname">>,
@@ -149,7 +144,7 @@ init_per_suite(Config) ->
      {replica, binary_to_atom(Table)} | Config].
 
 
-update_test(Config) ->
+hset_insert_false_test(Config) ->
     Manager = ?config(manager, Config),
     Table = ?config(table, Config),
     Schema = ?config(schema, Config),
@@ -164,143 +159,109 @@ update_test(Config) ->
                     pgmp_rep_log_ets:when_ready(
                       #{server_ref => Manager})),
 
-    {K, _} = Existing = pick_one(ets:tab2list(Replica)),
-    ct:log("existing: ~p~n", [Existing]),
-
-    [{command_complete, 'begin'}] = pgmp_connection_sync:query(#{sql => "begin"}),
-
-    [{parse_complete, []}] = pgmp_connection_sync:parse(
-                               #{sql => io_lib:format(
-                                          "update ~s set v = $2 where k = $1 returning *",
-                                          [Table])}),
-
-    V = alpha(5),
-
-    [{bind_complete, []}] = pgmp_connection_sync:bind(
-                              #{args => [K, V]}),
+    ct:log("~p~n", [lists:sort(ets:tab2list(Replica))]),
 
     [{row_description, _},
-     {data_row, [K, V] = Updated},
-     {command_complete,
-      {update, 1}}] =  pgmp_connection_sync:execute(#{}),
+     {data_row, [K]},
+     {command_complete, {select, 1}}] = pgmp_connection_sync:query(
+                                          #{sql => "select gen_random_uuid()"}),
+    V = false,
+    ct:log("k: ~p, v: ~p~n", [K, V]),
 
-    ct:log("updated: ~p~n", [Updated]),
-
-    [{command_complete, commit}] = pgmp_connection_sync:query(#{sql => "commit"}),
+    ?assertEqual(
+       [{integer, 1}],
+       send_sync(
+         Config,
+         {array,
+          [{bulk, "hset"},
+           {bulk,
+            lists:join(
+              ".",
+              [Publication, Table, K])},
+           {bulk, "v"},
+           {bulk, atom_to_binary(V)}]})),
 
     wait_for(
-      [list_to_tuple(Updated)],
-      fun () ->
+      [{K, V}],
+      fun
+          () ->
               ets:lookup(Replica, K)
       end),
 
-    [{array, _} = KV] = send_sync(
-                          Config,
-                          {array,
-                           [{bulk, "HGETALL"},
-                            {bulk,
-                             lists:join(
-                               ".", [Publication, Table, integer_to_list(K)])}]}),
+    ?assertEqual(
+       [{array,
+         [{bulk, <<"v">>},
+          {bulk, atom_to_binary(V)},
+          {bulk, <<"k">>},
+          {bulk, K}]}],
+       send_sync(
+         Config,
+         {array,
+          [{bulk, "hgetall"},
+           {bulk,
+            lists:join(
+              ".",
+              [Publication, Table, K])}]})).
 
-    ct:log("hgetall: ~p~n", [KV]),
 
-    #{<<"v">> := V} = as_map(KV).
-
-
-delete_test(Config) ->
+hset_insert_true_test(Config) ->
     Manager = ?config(manager, Config),
     Table = ?config(table, Config),
+    Schema = ?config(schema, Config),
     Replica = ?config(replica, Config),
+    Port = ?config(port, Config),
     Publication = ?config(publication, Config),
+
+    ct:log("schema: ~p,~ntable: ~p,~nreplica: ~p,~nport: ~p,~npublication: ~p~n",
+           [Schema, Table, Replica, Port, Publication]),
 
     {reply, ok} = gen_statem:receive_response(
                     pgmp_rep_log_ets:when_ready(
                       #{server_ref => Manager})),
 
-    {K, V} = Existing = pick_one(ets:tab2list(Replica)),
-    ct:log("existing: ~p~n", [Existing]),
-
-    [{command_complete, 'begin'}] = pgmp_connection_sync:query(#{sql => "begin"}),
-
-    [{parse_complete, []}] = pgmp_connection_sync:parse(
-                               #{sql => io_lib:format(
-                                          "delete from ~s where k = $1 returning *",
-                                          [Table])}),
-
-    [{bind_complete, []}] = pgmp_connection_sync:bind(
-                              #{args => [K]}),
+    ct:log("~p~n", [lists:sort(ets:tab2list(Replica))]),
 
     [{row_description, _},
-     {data_row, [K, V] = Deleted},
-     {command_complete,
-      {delete, 1}}] =  pgmp_connection_sync:execute(#{}),
+     {data_row, [K]},
+     {command_complete, {select, 1}}] = pgmp_connection_sync:query(
+                                          #{sql => "select gen_random_uuid()"}),
+    V = true,
+    ct:log("k: ~p, v: ~p~n", [K, V]),
 
-    ct:log("deleted: ~p~n", [Deleted]),
-
-    [{command_complete, commit}] = pgmp_connection_sync:query(#{sql => "commit"}),
+    ?assertEqual(
+       [{integer, 1}],
+       send_sync(
+         Config,
+         {array,
+          [{bulk, "hset"},
+           {bulk,
+            lists:join(
+              ".",
+              [Publication, Table, K])},
+           {bulk, "v"},
+           {bulk, atom_to_binary(V)}]})),
 
     wait_for(
-      [],
-      fun () ->
+      [{K, V}],
+      fun
+          () ->
               ets:lookup(Replica, K)
       end),
 
-    [{array,[]}] = send_sync(
-                     Config,
-                     {array,
-                      [{bulk, "HGETALL"},
-                       {bulk,
-                        lists:join(
-                          ".", [Publication, Table, integer_to_list(K)])}]}).
-
-
-insert_test(Config) ->
-    Manager = ?config(manager, Config),
-    Table = ?config(table, Config),
-    Replica = ?config(replica, Config),
-    Publication = ?config(publication, Config),
-
-    {reply, ok} = gen_statem:receive_response(
-                    pgmp_rep_log_ets:when_ready(
-                      #{server_ref => Manager})),
-
-
-    [{command_complete, 'begin'}] = pgmp_connection_sync:query(#{sql => "begin"}),
-
-    [{parse_complete, []}] = pgmp_connection_sync:parse(
-                               #{sql => io_lib:format(
-                                          "insert into ~s (v) values ($1) returning *",
-                                          [Table])}),
-
-    [{bind_complete, []}] = pgmp_connection_sync:bind(
-                              #{args => [alpha(5)]}),
-
-    [{row_description, _},
-     {data_row, [K, V] = Inserted},
-     {command_complete,
-      {insert, 1}}] =  pgmp_connection_sync:execute(#{}),
-
-    ct:log("inserted: ~p~n", [Inserted]),
-
-    [{command_complete, commit}] = pgmp_connection_sync:query(#{sql => "commit"}),
-
-    wait_for(
-      [list_to_tuple(Inserted)],
-      fun () ->
-              ets:lookup(Replica, K)
-      end),
-
-    [{array, _} = KV] = send_sync(
-                          Config,
-                          {array,
-                           [{bulk, "HGETALL"},
-                            {bulk,
-                             lists:join(
-                               ".", [Publication, Table, integer_to_list(K)])}]}),
-
-    ct:log("hgetall: ~p~n", [KV]),
-
-    #{<<"v">> := V} = as_map(KV).
+    ?assertEqual(
+       [{array,
+         [{bulk, <<"v">>},
+          {bulk, atom_to_binary(V)},
+          {bulk, <<"k">>},
+          {bulk, K}]}],
+       send_sync(
+         Config,
+         {array,
+          [{bulk, "hgetall"},
+           {bulk,
+            lists:join(
+              ".",
+              [Publication, Table, K])}]})).
 
 
 wait_for(Expected, Check) ->
@@ -347,10 +308,7 @@ end_per_suite(Config) ->
                            "drop table ~s cascade",
                            [Table]))})]),
 
-    ok = application:stop(pgec),
-    ok = application:stop(pgmp),
-    ok = application:stop(mcd),
-    ok = application:stop(resp).
+    common:purge_applications().
 
 
 alpha(N) ->

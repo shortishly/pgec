@@ -34,6 +34,6 @@ do
     commit;
 EOF
 
-    sleep $(($RANDOM % 5));
+    sleep $((RANDOM % 5));
 
 done

@@ -17,6 +17,7 @@
 
 
 -export([all/1]).
+-export([purge_applications/0]).
 -include_lib("common_test/include/ct.hrl").
 
 
@@ -30,3 +31,35 @@ all(Module) ->
     [Function || {Function, Arity} <- Module:module_info(exports),
                  Arity =:= 1,
                  is_a_test(Function)].
+
+
+purge_applications() ->
+    ?FUNCTION_NAME([pgec, pgmp, mcd, resp]).
+
+
+purge_applications([Application | Applications]) ->
+    purge_application(Application),
+    ?FUNCTION_NAME(Applications);
+
+purge_applications([]) ->
+    ok.
+
+
+purge_application(Application) ->
+    application:stop(Application),
+    case application:get_key(Application, modules) of
+        undefined ->
+            [];
+        {ok, Modules} ->
+            [begin
+                 case code:is_loaded(Module) of
+                     {file, _} ->
+                         code:purge(Module),
+                         code:delete(Module),
+                         code:purge(Module);
+                     false ->
+                         not_loaded
+                 end
+             end || Module <- Modules]
+    end,
+    application:unload(Application).

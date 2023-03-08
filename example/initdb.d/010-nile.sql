@@ -1,3 +1,4 @@
+-- -*- mode: sql; sql-product: postgres; -*-
 -- Copyright (c) 2023 Peter Morgan <peter.james.morgan@gmail.com>
 --
 -- Licensed under the Apache License, Version 2.0 (the "License");

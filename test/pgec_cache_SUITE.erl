@@ -381,11 +381,7 @@ end_per_suite(Config) ->
                            "drop table ~s cascade",
                            [Table]))})]),
 
-    ok = application:stop(pgec),
-    ok = application:stop(pgmp),
-    ok = application:stop(mcd),
-    ok = application:stop(resp).
-
+    common:purge_applications().
 
 
 alpha(N) ->

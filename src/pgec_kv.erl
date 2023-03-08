@@ -17,32 +17,35 @@
 
 
 -export([key/2]).
+-export([keys/2]).
 -export([row/2]).
 -export([row/3]).
 -include_lib("kernel/include/logger.hrl").
 
 
-key(#{keys := Positions, oids := Types} = Metadata, Keys)
+keys(#{keys := Positions, oids := Types}, Keys) ->
+    pgmp_data_row:decode(
+      #{<<"client_encoding">> => <<"UTF8">>},
+      lists:map(
+        fun
+            ({Encoded, KeyOID}) ->
+                {#{format => text, type_oid => KeyOID}, Encoded}
+        end,
+        lists:zip(
+          Keys,
+          lists:map(
+            fun
+                (Position) ->
+                    lists:nth(Position, Types)
+            end,
+            Positions)))).
+
+
+key(#{keys := Positions} = Metadata, Keys)
   when length(Positions) == length(Keys) ->
     ?LOG_DEBUG(#{keys => Keys, metadata => Metadata}),
 
-    case pgmp_data_row:decode(
-           #{<<"client_encoding">> => <<"UTF8">>},
-           lists:map(
-           fun
-               ({Encoded, KeyOID}) ->
-                   {#{format => text, type_oid => KeyOID}, Encoded}
-           end,
-           lists:zip(
-             Keys,
-
-             lists:map(
-               fun
-                   (Position) ->
-                       lists:nth(Position, Types)
-               end,
-               Positions)))) of
-
+    case keys(Metadata, Keys) of
         [Primary] ->
             Primary;
 
@@ -61,11 +64,15 @@ row(Metadata, ContentType) ->
 
     fun
         (Values, A) ->
+            ?LOG_DEBUG(#{values => Values, a => A}),
             [?FUNCTION_NAME(Metadata, ContentType, Values) | A]
     end.
 
 
 row(#{columns := Columns, oids := OIDS} = Metadata, ContentType, Values) ->
+    ?LOG_DEBUG(#{metadata => Metadata,
+                 content_type => ContentType,
+                 values => Values}),
     maps:from_list(
       lists:zipwith3(
         combine(ContentType),
@@ -100,17 +107,165 @@ combine(ContentType) ->
     end.
 
 
-value(_ContentType, #{<<"typname">> := <<"date">>}, {Ye, Mo, Da}) ->
+value(<<"text/plain">> = ContentType,
+      ColumnType,
+      null = Value) ->
+    ?LOG_DEBUG(#{content_type => ContentType,
+                 column_type => ColumnType,
+                 value => Value}),
+    Value;
+
+value(<<"text/plain">> = ContentType,
+      #{<<"typname">> := Name} = ColumnType,
+      Value) when Name == <<"int2">>;
+                  Name == <<"int4">>;
+                  Name == <<"int8">>;
+                  Name == <<"money">> ->
+    ?LOG_DEBUG(#{content_type => ContentType,
+                 column_type => ColumnType,
+                 value => Value}),
+    integer_to_list(Value);
+
+value(<<"text/plain">> = ContentType,
+      #{<<"typname">> := Name} = ColumnType,
+      Value) when Name == <<"numeric">>,
+                  is_integer(Value) ->
+    ?LOG_DEBUG(#{content_type => ContentType,
+                 column_type => ColumnType,
+                 value => Value}),
+    integer_to_list(Value);
+
+value(<<"text/plain">> = ContentType,
+      #{<<"typname">> := Name} = ColumnType,
+      Value) when Name == <<"numeric">>,
+                  is_float(Value) ->
+    ?LOG_DEBUG(#{content_type => ContentType,
+                 column_type => ColumnType,
+                 value => Value}),
+    float_to_list(Value, [short]);
+
+value(ContentType,
+      #{<<"typname">> := <<"float", _/bytes>>} = ColumnType,
+      Value) when Value == 'NaN';
+                  Value == 'Infinity';
+                  Value == '-Infinity' ->
+    ?LOG_DEBUG(#{content_type => ContentType,
+                 column_type => ColumnType,
+                 value => Value}),
+    atom_to_binary(Value);
+
+value(<<"text/plain">> = ContentType,
+      #{<<"typname">> := <<"float", _/bytes>>} = ColumnType,
+      Value) when is_float(Value) ->
+    ?LOG_DEBUG(#{content_type => ContentType,
+                 column_type => ColumnType,
+                 value => Value}),
+    float_to_list(Value, [short]);
+
+value(<<"text/plain">> = ContentType,
+      #{<<"typname">> := <<"float", _/bytes>>} = ColumnType,
+      Value) when is_integer(Value) ->
+    ?LOG_DEBUG(#{content_type => ContentType,
+                 column_type => ColumnType,
+                 value => Value}),
+    integer_to_list(Value);
+
+value(<<"text/plain">> = ContentType,
+      #{<<"typname">> := <<"bool">>} = ColumnType,
+      Value) ->
+    ?LOG_DEBUG(#{content_type => ContentType,
+                 column_type => ColumnType,
+                 value => Value}),
+    atom_to_list(Value);
+
+value(<<"text/plain">> = ContentType,
+      #{<<"typname">> := Name} = ColumnType,
+      Value) when Name == <<"jsonb">>;
+                  Name == <<"json">>,
+                  is_map(Value) ->
+    ?LOG_DEBUG(#{content_type => ContentType,
+                 column_type => ColumnType,
+                 value => Value}),
+    jsx:encode(Value);
+
+value(ContentType,
+      #{<<"typname">> := Type} = ColumnType,
+      {{Ye, Mo, Da}, {Ho, Mi, Se}} = Value)
+  when Type == <<"timestamp">>; Type == <<"timestampz">>->
+    ?LOG_DEBUG(#{content_type => ContentType,
+                 column_type => ColumnType,
+                 value => Value}),
+
+    iolist_to_binary(
+      io_lib:format(
+        "~4..0b-~2..0b-~2..0bT~2..0b:~2..0b:~2..0bZ",
+        [Ye, Mo, Da, Ho, Mi, Se]));
+
+value(ContentType,
+      #{<<"typname">> := <<"date">>} = ColumnType,
+      {Ye, Mo, Da} = Value) ->
+    ?LOG_DEBUG(#{content_type => ContentType,
+                 column_type => ColumnType,
+                 value => Value}),
+
     iolist_to_binary(
       io_lib:format(
         "~4..0b-~2..0b-~2..0b",
         [Ye, Mo, Da]));
 
-value(_ContentType, #{<<"typname">> := <<"time">>}, {Ho, Mi, Se}) ->
+value(ContentType,
+      #{<<"typname">> := <<"time">>} = ColumnType,
+      {Ho, Mi, Se} = Value) ->
+    ?LOG_DEBUG(#{content_type => ContentType,
+                 column_type => ColumnType,
+                 value => Value}),
     iolist_to_binary(
       io_lib:format(
         "~2..0b:~2..0b:~2..0b",
         [Ho, Mi, Se]));
 
-value(_ContentType, _ColumnType, Value) ->
+value(<<"text/plain">> = ContentType,
+      #{<<"typname">> := Type} = ColumnType,
+      {From, To} = Value) when Type == <<"lseg">>;
+                               Type == <<"box">> ->
+    ?LOG_DEBUG(#{content_type => ContentType,
+                 column_type => ColumnType,
+                 value => Value}),
+    jsx:encode(#{from => From, to => To});
+
+value(<<"text/plain">> = ContentType,
+      #{<<"typname">> := Type} = ColumnType,
+      Value) when Type == <<"point">>;
+                  Type == <<"line">>;
+                  Type == <<"path">>;
+                  Type == <<"polygon">>;
+                  Type == <<"circle">> ->
+    ?LOG_DEBUG(#{content_type => ContentType,
+                 column_type => ColumnType,
+                 value => Value}),
+    jsx:encode(Value);
+
+
+value(ContentType,
+      #{<<"typname">> := Type} = ColumnType,
+      {From, To} = Value) when Type == <<"lseg">>;
+                               Type == <<"box">> ->
+    ?LOG_DEBUG(#{content_type => ContentType,
+                 column_type => ColumnType,
+                 value => Value}),
+    #{from => From, to => To};
+
+value(ContentType,
+      #{<<"typname">> := <<"timestamp">>} = ColumnType,
+      Value) when is_integer(Value) ->
+    ?LOG_DEBUG(#{content_type => ContentType,
+                 column_type => ColumnType,
+                 value => Value}),
+    iolist_to_binary(
+      calendar:system_time_to_rfc3339(Value,  [{unit, microsecond}]));
+
+value(ContentType, ColumnType, Value) ->
+    ?LOG_DEBUG(#{content_type => ContentType,
+                 column_type => ColumnType,
+                 value => Value}),
     Value.

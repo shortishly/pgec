@@ -21,6 +21,7 @@
 -export([start_link/0]).
 -export([start_link/1]).
 -export([terminate/3]).
+-include_lib("kernel/include/logger.hrl").
 
 
 start_link() ->
@@ -53,6 +54,7 @@ init([_Arg]) ->
 
     catch
         error:badarg ->
+            ?LOG_NOTICE(#{?MODULE => "no configuration"}),
             ignore
     end.
 
