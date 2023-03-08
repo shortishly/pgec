@@ -210,107 +210,53 @@ curl -s http://localhost:8080/pub/cities/Tulsa/OK | jq
 }
 ```
 
-## In Memory Database Replication Cache
+The Redis compatible API will write-through to PostgreSQL on mutating
+operations (e.g., `DEL` or `HSET`), and also publish notifications on
+cache changes.
 
-[pgec][shortishly-pgec] is a real-time in memory database replication
-cache, with a [memcached][memcached-org] and REST API.
+![redis api](/demos/pgec-redis-api-2023-03-08.svg)
 
-### memcached
+Read only operations such as [EXISTS][redis-commands-exists],
+[HGETALL][redis-commands-hgetall] or [HGET][redis-commands-hget] are
+handled directly by the [in memory ETS cache][erlang-ets]. These commands
+ultimately resolve in a call to [ets:lookup/2][erlang-ets-lookup],
+with the resultant [tuple][erlang-types-tuple] converted into a
+(usually) string representation for Redis.
 
-We can make [memcached][memcached-org] requests to get data from
-[pgec][shortishly-pgec] on port 11211.
+Mutating operations, such as [DEL][redis-commands-del] or
+[HSET][redis-commands-hset] automatically write through to PostgreSQL
+(after checking the cache to determine whether an
+[insert][postgresql-insert] or [update][postgresql-update] is the
+appropriate SQL statement to use). Streaming replication updates
+the in memory cache with the updated values from the database.
 
-The keys used have the format: `publication.table.key`. To get the key
-"1" from table "xy" and publication: "pub". We would use `get pub.xy.1`
-as follows:
-
-```shell
-telnet localhost 11211
-Trying 127.0.0.1...
-Connected to localhost.
-Escape character is '^]'.
-get pub.xy.1
-VALUE pub.xy.1 0 17
-{"x":1,"y":"foo"}
-END
-```
-
-Or, using the [node client][memcached-npmjs-client]:
-
-```javascript
-var Memcached = require('memcached');
-var memcached = new Memcached('127.0.0.1:11211');
-
-memcached.get('pub.xy.1', function (err, data) {
-    console.log(data);
-});
-```
-
-### REST
-
-Taking a look at the `xy` table via the JSON API:
-
-```shell
-curl http://localhost:8080/pub/xy
-```
-
-Will return:
-
-```json
-{"rows": [{"x": 1, "y": "foo"},
-          {"x": 2, "y": "bar"},
-          {"x": 4, "y": "boo"},
-          {"x": 3, "y": "baz"}]}
-```
-
-Where, `pub` is the publication that we have created, and `xy` is a
-table that is part of that publication.
-
-Changes that are applied to the PostgreSQL table are automatically
-streamed to `pgec` and applied to the edge cache.
-
-```sql
-insert into xy values (5, 'pqr');
-```
-
-Any CRUD changes to the table are automatically pushed via logical
-replication to the `pgec` cache:
-
-```shell
-curl http://localhost:8080/pub/xy
-```
-
-Will return:
-
-```json
-{"rows": [{"x": 5, "y": "pqr"},
-          {"x": 1, "y": "foo"},
-          {"x": 2, "y": "bar"},
-          {"x": 4, "y": "boo"},
-          {"x": 3, "y": "baz"}]}
-```
-
-To request the value for key `2`:
-
-```shell
-curl http://localhost:8080/pub/xy/2
-```
-
-Will return:
-
-```json
-{"x":2,"y":"bar"}
-```
+The real-time replication stream from PostgreSQL is also published to
+subscribers with table level granularity. For example a subscription
+to `__key*__:pub.grades.*` will result in any changes to the `grades`
+table being published to that subscriber. Internally [erlang message
+passing][erlang-message-passing] is used with a [process group per
+table][erlang-org-pg]. Row level granularity is not currently
+implemented, but is on the back log.
 
 [cli-github-com]: https://cli.github.com
 [docker-com-get-docker]: https://docs.docker.com/get-docker/
+[erlang-ets-lookup]: https://www.erlang.org/doc/man/ets.html#lookup-2
+[erlang-ets]: https://www.erlang.org/doc/man/ets.html
+[erlang-message-passing]: https://www.erlang.org/blog/message-passing/#sending-messages
+[erlang-org-pg]: https://www.erlang.org/doc/man/pg.html
+[erlang-types-tuple]: https://www.erlang.org/doc/reference_manual/data_types.html#tuple
 [grafana]: https://grafana.com/
 [mcd]: https://github.com/shortishly/mcd
-[memcached-npmjs-client]: https://www.npmjs.com/package/memcached
-[memcached-org]: https://memcached.org/
 [pgmp]: https://github.com/shortishly/pgmp
+[postgresql-insert]: https://www.postgresql.org/docs/current/sql-insert.html
 [postgresql-org]: https://www.postgresql.org/
+[postgresql-update]: https://www.postgresql.org/docs/current/sql-update.html
 [prometheus-io]: https://prometheus.io
+[redis-commands-del]: https://redis.io/commands/del/
+[redis-commands-exists]: https://redis.io/commands/exists/
+[redis-commands-hget]: https://redis.io/commands/hget/
+[redis-commands-hgetall]: https://redis.io/commands/hgetall/
+[redis-commands-hset]: https://redis.io/commands/hset/
 [resp]: https://github.com/shortishly/resp
 [shortishly-ccwsr]: https://shortishly.com/blog/cache-consistency-with-streaming-replication/
 [shortishly-pgec]: https://shortishly.com/blog/postgresql-edge-cache/
