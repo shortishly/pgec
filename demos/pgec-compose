@@ -30,7 +30,7 @@ figlet grades
 p "cat example/data/burkardt/grades.csv"
 ack --passthru 234-56-7890 example/data/burkardt/grades.csv
 p "cat example/initdb.d/010-grades.sql"
-grep --invert-match '^--' example/initdb.d/010-grades.sql|ack --passthru "ssn text primary key"
+grep --invert-match '^--' example/initdb.d/010-grades.sql | ack --passthru "ssn text primary key"
 
 wait
 figlet rest api

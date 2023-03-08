@@ -106,4 +106,6 @@ ptk(PTK) ->
 
 
 row(Metadata, Row) ->
-    pgec_kv:row(Metadata, <<"application/json">>, Row).
+    Result = pgec_kv:row(Metadata, <<"application/json">>, Row),
+    ?LOG_DEBUG(#{metadata => Metadata, row => Row, result => Result}),
+    Result.

@@ -19,6 +19,10 @@
 -export([info/1]).
 -export([init/1]).
 -export([recv/1]).
+-import(pgmp_connection_sync, [bind/1]).
+-import(pgmp_connection_sync, [execute/1]).
+-import(pgmp_connection_sync, [parse/1]).
+-import(pgmp_connection_sync, [query/1]).
 -include_lib("kernel/include/logger.hrl").
 -include_lib("stdlib/include/ms_transform.hrl").
 
@@ -117,70 +121,97 @@ recv(#{command := #{name := exists},
          Keys)}}};
 
 recv(#{command := #{name := hexists},
-       message := {array, [_, {bulk, Key}, {bulk, Field}]} = Message}) ->
+       message := {array, [_, {bulk, Key}, {bulk, Field}]}}) ->
     {continue,
      {encode,
       {integer,
        try lookup(ptk(Key)) of
            {ok, #{metadata := Metadata, row := Row}} ->
-               ?LOG_DEBUG(#{metadata => Metadata,
-                            message => Message,
-                            row => Row}),
-               case row(Metadata, Row) of
+               try row(Metadata, Row) of
                    #{Field := Value} when Value /= null ->
                        1;
 
                    #{} ->
                        0
+
+               catch
+                   Class:Exception:Stacktrace ->
+                       ?LOG_DEBUG(#{class => Class,
+                                    exception => Exception,
+                                    stacktrace => Stacktrace}),
+                       0
                end;
 
            not_found ->
                0
-
        catch
            error:badarg ->
                0
        end}}};
 
 recv(#{command := #{name := hset},
-       message := {array, [_, {bulk, Key} | NameValues]}}) ->
+       message := {array, [_, {bulk, Key} | NameValues]}} = Recv) ->
+    ?LOG_DEBUG(#{recv => Recv}),
     #{key := Encoded} = PTK = ptk(Key),
     try lookup(PTK) of
         {ok, #{metadata := _Metadata}} ->
             [{_, Metadata}] = metadata(PTK),
-            case pbe(update(Metadata, names(Metadata, NameValues)),
+            try pbe(update(Metadata, names(Metadata, NameValues)),
                      pgec_kv:keys(
                        Metadata,
                        string:split(
                          Encoded,
                          "/",
                          all)) ++ values(Metadata, NameValues)) of
+
                 {ok, Changed} ->
                     {continue,
                      {encode,
                       {integer, Changed}}};
 
-                {error, _} = Error ->
-                    {continue, {encode, Error}}
+                {error, Reason} ->
+                    {continue, {encode, {error, Reason}}}
+
+            catch
+                error:badarg:Stacktrace ->
+                    ?LOG_DEBUG(#{stacktrace => Stacktrace}),
+                    {continue, {encode, {integer, 0}}};
+
+                Class:Exception:Stacktrace ->
+                    ?LOG_DEBUG(#{class => Class,
+                                   exception => Exception,
+                                   stacktrace => Stacktrace}),
+                    {continue, {encode, encode({error, Exception})}}
             end;
 
         not_found ->
             [{_, Metadata}] = metadata(PTK),
 
-            case pbe(insert(Metadata, names(Metadata, NameValues)),
-                     pgec_kv:keys(
-                                   Metadata,
-                                   string:split(
-                                     Encoded,
-                                     "/",
-                                     all)) ++ values(Metadata, NameValues)) of
+            try pbe(insert(Metadata, names(Metadata, NameValues)),
+                    pgec_kv:keys(
+                      Metadata,
+                      string:split(
+                        Encoded,
+                        "/",
+                        all)) ++ values(Metadata, NameValues)) of
                 {ok, Changed} ->
                     {continue,
                      {encode,
                       {integer, Changed}}};
 
-                {error, _} = Error ->
-                    {continue, {encode, Error}}
+                {error, Reason} ->
+                    {continue, {encode, {error, Reason}}}
+
+            catch
+                error:badarg:Stacktrace ->
+                    ?LOG_DEBUG(#{stacktrace => Stacktrace}),
+                    {continue, {encode, {integer, 0}}};
+
+                Class:Exception:Stacktrace ->
+                    ?LOG_DEBUG(#{class => Class,
+                                 exception => Exception,
+                                 stacktrace => Stacktrace}),
+                    {continue, {encode, encode({error, Exception})}}
             end
     catch
         error:badarg ->
@@ -193,8 +224,7 @@ recv(#{command := #{name := del},
      {encode,
       {integer,
        try
-           [{command_complete, 'begin'}] = pgmp_connection_sync:query(
-                                             #{sql => "begin"}),
+           start(),
 
            N = lists:foldl(
                  fun
@@ -203,10 +233,10 @@ recv(#{command := #{name := del},
 
                          [{_, Metadata}] = metadata(PTK),
 
-                         [{parse_complete, []}] = pgmp_connection_sync:parse(
+                         [{parse_complete, []}] = parse(
                                                     #{sql => delete(Metadata)}),
 
-                         [{bind_complete, []}] = pgmp_connection_sync:bind(
+                         [{bind_complete, []}] = bind(
                                                    #{args => pgec_kv:keys(
                                                                Metadata,
                                                                string:split(
@@ -215,52 +245,50 @@ recv(#{command := #{name := del},
                                                                  all))}),
 
                          [{command_complete,
-                           {delete, 1}}] =  pgmp_connection_sync:execute(#{}),
+                           {delete, 1}}] = execute(#{}),
                          A + 1
                  end,
                  0,
                  Keys),
 
-           [{command_complete, commit}] = pgmp_connection_sync:query(
-                                            #{sql => "commit"}),
-
+           commit(),
            N
+
        catch
-           error:badarg ->
-               [{command_complete, rollback}] = pgmp_connection_sync:query(#{sql => "rollback"}),
+           Class:Exception:Stacktrace ->
+               ?LOG_DEBUG(#{class => Class,
+                            exception => Exception,
+                            stacktrace => Stacktrace}),
+               rollback(),
                0
        end}}};
 
 recv(#{command := #{name := hget},
-       message := {array, [_, {bulk, Key}, {bulk, Field}]}}) ->
+       message := {array, [_, {bulk, Key}, {bulk, Field}]}} = Recv) ->
+    ?LOG_DEBUG(#{recv => Recv}),
     {continue,
      {encode,
       {bulk,
        try lookup(ptk(Key)) of
            {ok, #{metadata := Metadata, row := Row}} ->
-               case row(Metadata, Row) of
-                   #{Field := Value} when is_integer(Value) ->
-                       integer_to_list(Value);
-
-                   #{Field := Value} when is_float(Value) ->
-                       float_to_list(Value, [short]);
-
-                   #{Field := Value} when is_map(Value) ->
-                       apply(
-                         pgmp_config:codec(json),
-                         encode,
-                         [Value]);
-
+               try row(Metadata, Row) of
                    #{Field := Value} when Value /= null ->
+                       ?LOG_DEBUG(#{field => Field, value => Value}),
                        Value;
 
-                   #{} ->
+                   Otherwise ->
+                       ?LOG_DEBUG(#{otherwise => Otherwise}),
+                       null
+               catch
+                   Class:Exception:Stacktrace ->
+                       ?LOG_DEBUG(#{class => Class,
+                                    exception => Exception,
+                                    stacktrace => Stacktrace}),
                        null
                end;
 
-           not_found ->
-               null
-
+               not_found ->
+                   null
        catch
            error:badarg ->
                null
@@ -273,34 +301,26 @@ recv(#{command := #{name := hgetall},
       {array,
        try lookup(ptk(Key)) of
            {ok, #{metadata := Metadata, row := Row}} ->
-               maps:fold(
-                 fun
-                     (_, null, A) ->
-                         A;
+               try maps:fold(
+                     fun
+                         (_, null, A) ->
+                             A;
 
-                     (K, V, A) when is_integer(V) ->
-                         [{bulk, K}, {bulk, integer_to_list(V)} | A];
-
-                     (K, V, A) when is_float(V) ->
-                         [{bulk, K}, {bulk, float_to_list(V, [short])} | A];
-
-                     (K, V, A) when is_map(V) ->
-                         [{bulk, K},
-                          {bulk,
-                           apply(
-                             pgmp_config:codec(json),
-                             encode,
-                             [V])} | A];
-
-                     (K, V, A) ->
-                         [{bulk, K}, {bulk, V} | A]
-                 end,
-                 [],
-                 row(Metadata, Row));
+                         (K, V, A) ->
+                             [{bulk, K}, {bulk, V} | A]
+                     end,
+                     [],
+                     row(Metadata, Row))
+               catch
+                   Class:Exception:Stacktrace ->
+                       ?LOG_DEBUG(#{class => Class,
+                                    exception => Exception,
+                                    stacktrace => Stacktrace}),
+                       []
+               end;
 
            not_found ->
                []
-
        catch
            error:badarg ->
                []
@@ -313,24 +333,31 @@ recv(#{command := #{name := hlen},
       {integer,
        try lookup(ptk(Key)) of
            {ok, #{metadata := Metadata, row := Row}} ->
-               maps:fold(
-                 fun
-                     (_, null, A) ->
-                         A;
+               try maps:fold(
+                     fun
+                         (_, null, A) ->
+                             A;
 
-                     (_, _, A) ->
-                         A + 1
-                 end,
-                 0,
-                 row(Metadata, Row));
+                         (_, _, A) ->
+                             A + 1
+                     end,
+                     0,
+                     row(Metadata, Row))
 
-        not_found ->
+               catch
+                   Class:Exception:Stacktrace ->
+                       ?LOG_DEBUG(#{class => Class,
+                                    exception => Exception,
+                                    stacktrace => Stacktrace}),
+                       0
+               end;
+
+           not_found ->
                0
-
-    catch
-        error:badarg ->
-            0
-    end}}};
+       catch
+           error:badarg ->
+               0
+       end}}};
 
 recv(#{command := #{name := hkeys},
        message := {array, [_, {bulk, Key}]}}) ->
@@ -339,30 +366,36 @@ recv(#{command := #{name := hkeys},
       {array,
        try lookup(ptk(Key)) of
            {ok, #{metadata := Metadata, row := Row}} ->
-               maps:fold(
-                 fun
-                     (_, null, A) ->
-                         A;
+               try maps:fold(
+                     fun
+                         (_, null, A) ->
+                             A;
 
-                     (K, _, A) ->
-                         [{bulk, K} | A]
-                 end,
-                 [],
-                 row(Metadata, Row));
+                         (K, _, A) ->
+                             [{bulk, K} | A]
+                     end,
+                     [],
+                     row(Metadata, Row))
+               catch
+                   Class:Exception:Stacktrace ->
+                       ?LOG_DEBUG(#{class => Class,
+                                    exception => Exception,
+                                    stacktrace => Stacktrace}),
+                       []
+               end;
 
-        not_found ->
+           not_found ->
                []
-
-    catch
-        error:badarg ->
-            []
-    end}}};
+       catch
+           error:badarg ->
+               []
+       end}}};
 
 recv(#{command := #{name := psubscribe},
        message := {array, [_, {bulk, Pattern}]}}) ->
     [_, PTK] = string:split(Pattern, ":"),
-    case ptk(PTK) of
-        #{publication := Publication, table := Table, key := <<"*">>} ->
+    try ptk(PTK) of
+        #{publication := Publication, table := Table} ->
             pgmp_pg:join(#{m => pgmp_rep_log_ets,
                            publication => Publication,
                            name => Table}),
@@ -372,6 +405,10 @@ recv(#{command := #{name := psubscribe},
                [{bulk, "subscribe"},
                 {bulk, Pattern},
                 {integer, 1}]}}}
+
+    catch
+        error:badarg ->
+            []
     end;
 
 recv(#{message := {array, [{bulk, Command} | _]}} = Unknown) ->
@@ -454,8 +491,11 @@ ptk(PTK) ->
 
 
 row(Metadata, Row) ->
-    ?LOG_DEBUG(#{metadata => Metadata, row => Row}),
-    pgec_kv:row(Metadata, <<"application/json">>, Row).
+    Result = pgec_kv:row(Metadata, <<"text/plain">>, Row),
+    ?LOG_DEBUG(#{metadata => Metadata,
+                 row => Row,
+                result => Result}),
+    Result.
 
 
 topic(Prefix, Publication, Name, Key) when is_integer(Key) ->
@@ -556,18 +596,56 @@ values(#{coids := COIDs} = Metadata,
        [{bulk, Name}, {bulk, Encoded} | T] = L,
        A) ->
     case maps:find(Name, COIDs) of
-        {ok, OID} ->
+        {ok, Type} ->
             ?FUNCTION_NAME(
                Metadata,
                T,
-               [{#{format => text, type_oid => OID}, Encoded} | A]);
+               [decode(Type, Encoded) | A]);
 
         error ->
             error(badarg, [Metadata, L, A])
     end;
 
 values(_, [], A) ->
-    pgmp_data_row:decode(#{<<"client_encoding">> => <<"UTF8">>}, lists:reverse(A)).
+    lists:reverse(A).
+
+
+decode(#{<<"typname">> := <<"bool">>}, Value)
+  when Value == <<"true">>; Value == <<"false">> ->
+    binary_to_atom(Value);
+
+decode(#{<<"typname">> := Name}, Value)
+  when Name == <<"int2">>;
+       Name == <<"int4">>;
+       Name == <<"int8">> ->
+    binary_to_integer(Value);
+
+decode(#{<<"typname">> := <<"float", _/bytes>>}, Value) ->
+    try
+        binary_to_float(Value)
+    catch
+        error:badarg ->
+            binary_to_integer(Value)
+    end;
+
+decode(#{<<"typname">> := Name}, Value)
+  when Name == <<"timestamp">>;
+       Name == <<"timestampz">> ->
+    calendar:rfc3339_to_system_time(
+      binary_to_list(Value),
+      [{unit, microsecond}]);
+
+decode(#{<<"typname">> := <<"date">>},
+       <<Ye:4/bytes, "-", Mo:2/bytes, "-", Da:2/bytes>>) ->
+    triple(Ye, Mo, Da);
+
+decode(#{<<"typname">> := <<"time">>},
+       <<Ho:2/bytes, ":", Mi:2/bytes, ":", Se:2/bytes>>) ->
+    triple(Ho, Mi, Se);
+
+decode(Type, Value) ->
+    ?LOG_DEBUG(#{type => Type, value => Value}),
+    Value.
 
 
 delete(#{keys := Positions,
@@ -595,42 +673,55 @@ delete(#{keys := Positions,
 
 
 pbe(SQL, Bindings) ->
-    [{command_complete, 'begin'}] = pgmp_connection_sync:query(
-                                      #{sql => "begin"}),
-
-    case pgmp_connection_sync:parse(#{sql => SQL}) of
+    ?LOG_DEBUG(#{sql => SQL, bindings => Bindings}),
+    start(),
+    case parse(#{sql => SQL}) of
         [{parse_complete, []}] ->
-            case pgmp_connection_sync:bind(#{args => Bindings}) of
+            case bind(#{args => Bindings}) of
                 [{bind_complete, []}] ->
-                    case pgmp_connection_sync:execute(#{}) of
+                    case execute(#{}) of
                         [{command_complete,
                           {Reason, Changed}}] when Reason == update;
                                                    Reason == insert;
                                                    Reason == delete ->
-                            [{command_complete,
-                              commit}] = pgmp_connection_sync:query(
-                                           #{sql => "commit"}),
+                            commit(),
                             {ok, Changed}
-
                     end;
 
-                [{error, Reason}] ->
-                    [{command_complete, rollback}] = pgmp_connection_sync:query(
-                                                       #{sql => "rollback"}),
-                    {error, ["ERROR", ": ", atom_to_list(Reason)]}
+                [{error, _} = Error] ->
+                    rollback(),
+                    encode(Error)
             end;
 
-        [{error, Reason}] ->
-            [{command_complete, rollback}] = pgmp_connection_sync:query(
-                                               #{sql => "rollback"}),
-            {error, ["ERROR", ": ", atom_to_list(Reason)]};
+        [{error, _} = Error] ->
+            rollback(),
+            encode(Error);
 
         [{error_response,
           #{code := Code,
             message := Message,
             severity_localized := SeverityLocalized}}] ->
 
-            [{command_complete, rollback}] = pgmp_connection_sync:query(
-                                               #{sql => "rollback"}),
+            rollback(),
             {error, [SeverityLocalized, " ", Code, ": ", Message]}
     end.
+
+
+start() ->
+    [{command_complete, 'begin'}] = query(#{sql => "begin"}),
+    ok.
+
+commit() ->
+    [{command_complete, commit}] = query(#{sql => "commit"}),
+    ok.
+
+rollback() ->
+    [{command_complete, rollback}] = query(#{sql => "rollback"}),
+    ok.
+
+
+encode({error, Reason}) when is_atom(Reason) ->
+    {error, ["ERROR", ": ", atom_to_list(Reason)]}.
+
+triple(X, Y, Z) ->
+    list_to_tuple([binary_to_integer(I) || I <- [X, Y, Z]]).

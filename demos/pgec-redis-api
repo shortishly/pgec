@@ -1,0 +1,125 @@
+#!/usr/bin/env bash
+# Copyright (c) 2023 Peter Morgan <peter.james.morgan@gmail.com>
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+#
+. ../../paxtonhare/demo-magic/demo-magic.sh
+
+# unset TYPE_SPEED
+DEMO_PROMPT="${GREEN}➜ ${CYAN}\W ${COLOR_RESET}"
+unset DEMO_CMD_COLOR
+PROMPT_TIMEOUT=3
+
+clear
+
+# reset the grade back to C-
+docker compose exec --no-TTY postgres psql --command="update grades set grade='C-' where ssn='234-56-7890'" > /dev/null
+
+
+# delete Xiggly Zella
+docker compose exec --no-TTY postgres psql --command="delete from grades where ssn='321-21-4321'" > /dev/null
+
+
+figlet pgec
+echo
+p "#redis compatible API write-through to PostgreSQL"
+p "cat example/data/burkardt/grades.csv"
+ack --passthru 'Betty|Rubble|234-56-7890|C-' example/data/burkardt/grades.csv
+echo
+
+p "select grade from grades where ssn='234-56-7890'"
+docker \
+    compose exec \
+    --no-TTY \
+    postgres \
+    psql \
+    --command="select grade from grades where ssn='234-56-7890'" | ack --passthru "C-"
+
+p "# hget uses the consistent memory cache from pgec"
+p "redis-cli hget pub.grades.234-56-7890 grade"
+redis-cli hget pub.grades.234-56-7890 grade | ack --passthru "C-"
+
+echo
+echo
+p "# subscribe to change notification on grades"
+p "redis-cli psubscribe '__key*__:pub.grades.*' | sed 's/^/[psub] /' &"
+redis-cli psubscribe '__key*__:pub.grades.*' 2>&1 | sed "s/^/[psub] /" &
+
+echo
+echo
+
+p "# hset will write-through updating row in PostgreSQL"
+p "redis-cli hset pub.grades.234-56-7890 grade C"
+redis-cli hset pub.grades.234-56-7890 grade C
+
+p "# hset has updated Betty Rubble's existing row in PostgreSQL"
+p "select grade from grades where ssn='234-56-7890'"
+docker \
+    compose exec \
+    --no-TTY \
+    postgres \
+    psql \
+    --command="select grade from grades where ssn='234-56-7890'" | ack --passthru "C"
+
+p "# streaming replication keeps pgec consistent with PostgreSQL"
+p "redis-cli hget pub.grades.234-56-7890 grade"
+redis-cli hget pub.grades.234-56-7890 grade | ack --passthru "C"
+
+p "# inserting a row for 'Xiggy Zella' (321-21-4321)"
+p "select * from grades where ssn='321-21-4321'"
+docker \
+    compose exec \
+    --no-TTY \
+    postgres \
+    psql \
+    --command="select * from grades where ssn='321-21-4321'"
+
+p "# hset will write-through inserting a new row in PostgreSQL"
+pe "redis-cli hset pub.grades.321-21-4321 last Zella first Xiggy test1 47 test2 68 test3 54 test4 73 final 23 grade D+"
+
+p "# the inserted 'Xiggy Zella' row in PostgreSQL:"
+p "select * from grades where ssn='321-21-4321'"
+docker \
+    compose exec \
+    --no-TTY \
+    postgres \
+    psql \
+    --command="select * from grades where ssn='321-21-4321'" | ack --passthru "D\+"
+
+echo
+pe "# pgec remains consistent with the inserted row"
+pe "redis-cli hgetall pub.grades.321-21-4321"
+
+p "# direct SQL updates emit notifications"
+p "update grades set grade='D' where ssn='321-21-4321'"
+docker compose exec --no-TTY postgres psql --command="update grades set grade='D' where ssn='321-21-4321'"
+p "# streaming replication means pgec remains consistent"
+p "redis-cli hget pub.grades.321-21-4321 grade"
+redis-cli hget pub.grades.321-21-4321 grade | ack --passthru "D"
+
+p "# del will write-through deleting the row from PostgreSQL"
+pe "redis-cli del pub.grades.321-21-4321"
+p "select * from grades where ssn='321-21-4321'"
+docker \
+    compose exec \
+    --no-TTY \
+    postgres \
+    psql \
+    --command="select * from grades where ssn='321-21-4321'"
+pe "redis-cli exists pub.grades.321-21-4321"
+
+wait
+kill %1
+
+echo
+echo

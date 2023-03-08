@@ -87,6 +87,8 @@ handle_event(
   {response, #{label := #{f := metadata}, reply := Metadata}},
   _,
   #{publication := Publication}) ->
+    Types = pgmp_types:cache(),
+
     ets:insert(
       pgec_metadata,
       maps:fold(
@@ -95,7 +97,12 @@ handle_event(
              #{columns := Columns, oids := OIDs} = Data,
              A) ->
                 [{{Publication, Name},
-                  Data#{coids => maps:from_list(lists:zip(Columns, OIDs)),
+                  Data#{coids => maps:map(
+                                   fun
+                                       (_, OID) ->
+                                           maps:get(OID, Types)
+                                   end,
+                                   maps:from_list(lists:zip(Columns, OIDs))),
                         namespace => Namespace}} | A]
         end,
         [],

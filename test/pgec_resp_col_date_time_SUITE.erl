@@ -13,7 +13,7 @@
 %% limitations under the License.
 
 
--module(pgec_resp_json_SUITE).
+-module(pgec_resp_col_date_time_SUITE).
 
 
 -compile(export_all).
@@ -71,19 +71,14 @@ init_per_suite(Config) ->
                         legacy_header => true,
                         single_line => false}}}),
 
-    %% logger:set_module_level(
-    %%   [pgec_resp_emulator,
-    %%    pgec_mcd_emulator_text,
-    %%    pgec_kv,
-    %%    telemetry,
-    %%    pgmp_data_row,
-    %%    pgec_h],
-    %%   debug),
+    logger:set_module_level(
+      [],
+      debug),
 
     [{command_complete,
       create_table}] = pgmp_connection_sync:query(
                          #{sql => io_lib:format(
-                                    "create table ~s (k uuid default gen_random_uuid() primary key, a json, b jsonb)",
+                                    "create table ~s (k uuid default gen_random_uuid() primary key, a timestamp, b date, c time)",
                                     [Table])}),
 
 
@@ -94,32 +89,6 @@ init_per_suite(Config) ->
                                           [Publication, Table])}),
 
     [{command_complete, 'begin'}] = pgmp_connection_sync:query(#{sql => "begin"}),
-
-
-    [{parse_complete, []}] = pgmp_connection_sync:parse(
-                               #{sql => io_lib:format(
-                                          "insert into ~s (a, b) values ($1, $2) returning *",
-                                          [Table])}),
-
-    lists:map(
-      fun
-          (_) ->
-
-              M = #{alpha(5) => rand:uniform(1000)},
-              JSON = jsx:encode(M),
-              ct:log("json: ~p~n", [JSON]),
-
-              [{bind_complete, []}] = pgmp_connection_sync:bind(
-                                        #{args => [M, M]}),
-
-              [{row_description, _},
-               {data_row, Row},
-               {command_complete,
-                {insert, 1}}] =  pgmp_connection_sync:execute(#{}),
-
-              list_to_tuple(Row)
-      end,
-      lists:seq(1, 50)),
 
     Columns = [<<"pubname">>,
                <<"schemaname">>,
@@ -159,8 +128,6 @@ init_per_suite(Config) ->
              end,
              5),
 
-    ct:log("codec(json): ~p~n", [pgmp_config:codec(json)]),
-    ct:log("codec(jsonb): ~p~n", [pgmp_config:codec(jsonb)]),
     ct:log("manager: ~p~n", [sys:get_state(Manager)]),
     ct:log("which_groups: ~p~n", [pgmp_pg:which_groups()]),
     ct:log("publication: ~p~n", [[pgmp_rep_log_ets, Publication]]),
@@ -177,7 +144,7 @@ init_per_suite(Config) ->
      {replica, binary_to_atom(Table)} | Config].
 
 
-hgetall_test(Config) ->
+hset_insert_test(Config) ->
     Manager = ?config(manager, Config),
     Table = ?config(table, Config),
     Schema = ?config(schema, Config),
@@ -192,17 +159,51 @@ hgetall_test(Config) ->
                     pgmp_rep_log_ets:when_ready(
                       #{server_ref => Manager})),
 
-    {K, A, B} = Existing = pick_one(ets:tab2list(Replica)),
-    ct:log("existing: ~p~n", [Existing]),
+    ct:log("~p~n", [lists:sort(ets:tab2list(Replica))]),
+
+    [{row_description, _},
+     {data_row, [K]},
+     {command_complete, {select, 1}}] = pgmp_connection_sync:query(
+                                          #{sql => "select gen_random_uuid()"}),
+    A = <<"2023-03-07T08:48:57Z">>,
+    B = <<"1999-01-08">>,
+    C = <<"04:05:06">>,
+    ct:log("k: ~p, a: ~p, b: ~p, c: ~p~n", [K, A, B, C]),
+
+    ?assertEqual(
+       [{integer, 1}],
+       send_sync(
+         Config,
+         {array,
+          [{bulk, "hset"},
+           {bulk,
+            lists:join(
+              ".",
+              [Publication, Table, K])},
+           {bulk, "a"},
+           {bulk, A},
+           {bulk, "b"},
+           {bulk, B},
+           {bulk, "c"},
+           {bulk, C}]})),
+
+    wait_for(
+      [{K, from_timestamp(A), from_date(B), from_time(C)}],
+      fun
+          () ->
+              ets:lookup(Replica, K)
+      end),
 
     ?assertEqual(
        [{array,
          [{bulk, <<"k">>},
           {bulk, K},
+          {bulk, <<"c">>},
+          {bulk, C},
           {bulk, <<"b">>},
-          {bulk, jsx:encode(B)},
+          {bulk, B},
           {bulk, <<"a">>},
-          {bulk, jsx:encode(A)}]}],
+          {bulk, A}]}],
        send_sync(
          Config,
          {array,
@@ -212,48 +213,31 @@ hgetall_test(Config) ->
               ".",
               [Publication, Table, K])}]})).
 
+from_timestamp(Value) ->
+    to_datetime(
+      calendar:rfc3339_to_system_time(
+        binary_to_list(Value),
+        [{unit, microsecond}])).
 
-hget_test(Config) ->
-    Manager = ?config(manager, Config),
-    Table = ?config(table, Config),
-    Schema = ?config(schema, Config),
-    Replica = ?config(replica, Config),
-    Port = ?config(port, Config),
-    Publication = ?config(publication, Config),
 
-    ct:log("schema: ~p,~ntable: ~p,~nreplica: ~p,~nport: ~p,~npublication: ~p~n",
-           [Schema, Table, Replica, Port, Publication]),
+to_datetime(SystemTimeMicrosecond) ->
+    calendar:gregorian_seconds_to_datetime(
+      erlang:convert_time_unit(
+        pgmp_calendar:epoch(posix) + SystemTimeMicrosecond,
+        microsecond,
+        second)).
 
-    {reply, ok} = gen_statem:receive_response(
-                    pgmp_rep_log_ets:when_ready(
-                      #{server_ref => Manager})),
 
-    {K, A, B} = Existing = pick_one(ets:tab2list(Replica)),
-    ct:log("existing: ~p~n", [Existing]),
+from_date(<<Ye:4/bytes, "-", Mo:2/bytes, "-", Da:2/bytes>>) ->
+    triple(Ye, Mo, Da).
 
-    ?assertEqual(
-       [{bulk, jsx:encode(A)}],
-       send_sync(
-         Config,
-         {array,
-          [{bulk, "hget"},
-           {bulk,
-            lists:join(
-              ".",
-              [Publication, Table, K])},
-           {bulk, "a"}]})),
 
-    ?assertEqual(
-       [{bulk, jsx:encode(B)}],
-       send_sync(
-         Config,
-         {array,
-          [{bulk, "hget"},
-           {bulk,
-            lists:join(
-              ".",
-              [Publication, Table, K])},
-           {bulk, "b"}]})).
+from_time(<<Ho:2/bytes, ":", Mi:2/bytes, ":", Se:2/bytes>>) ->
+    triple(Ho, Mi, Se).
+
+
+triple(X, Y, Z) ->
+    list_to_tuple([binary_to_integer(I) || I <- [X, Y, Z]]).
 
 
 wait_for(Expected, Check) ->

@@ -5,7 +5,7 @@ replication cache with Redis, Memcached and REST APIs. It supports
 column lists and row filters with the latest features of replication
 in PostgreSQL 15.
 
-![High Level Architecture](pgec-hla-2023-02-23.svg)
+![High Level Architecture](pgec-hla-2023-03-08.svg)
 
 The replication process creates a transaction checkpoint ensuring data
 integrity. Once the initial data has been collected, streaming

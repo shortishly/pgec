@@ -13,7 +13,7 @@
 %% limitations under the License.
 
 
--module(pgec_resp_json_SUITE).
+-module(pgec_resp_col_boolean_SUITE).
 
 
 -compile(export_all).
@@ -71,19 +71,14 @@ init_per_suite(Config) ->
                         legacy_header => true,
                         single_line => false}}}),
 
-    %% logger:set_module_level(
-    %%   [pgec_resp_emulator,
-    %%    pgec_mcd_emulator_text,
-    %%    pgec_kv,
-    %%    telemetry,
-    %%    pgmp_data_row,
-    %%    pgec_h],
-    %%   debug),
+    logger:set_module_level(
+      [],
+      debug),
 
     [{command_complete,
       create_table}] = pgmp_connection_sync:query(
                          #{sql => io_lib:format(
-                                    "create table ~s (k uuid default gen_random_uuid() primary key, a json, b jsonb)",
+                                    "create table ~s (k uuid default gen_random_uuid() primary key, v boolean)",
                                     [Table])}),
 
 
@@ -94,32 +89,6 @@ init_per_suite(Config) ->
                                           [Publication, Table])}),
 
     [{command_complete, 'begin'}] = pgmp_connection_sync:query(#{sql => "begin"}),
-
-
-    [{parse_complete, []}] = pgmp_connection_sync:parse(
-                               #{sql => io_lib:format(
-                                          "insert into ~s (a, b) values ($1, $2) returning *",
-                                          [Table])}),
-
-    lists:map(
-      fun
-          (_) ->
-
-              M = #{alpha(5) => rand:uniform(1000)},
-              JSON = jsx:encode(M),
-              ct:log("json: ~p~n", [JSON]),
-
-              [{bind_complete, []}] = pgmp_connection_sync:bind(
-                                        #{args => [M, M]}),
-
-              [{row_description, _},
-               {data_row, Row},
-               {command_complete,
-                {insert, 1}}] =  pgmp_connection_sync:execute(#{}),
-
-              list_to_tuple(Row)
-      end,
-      lists:seq(1, 50)),
 
     Columns = [<<"pubname">>,
                <<"schemaname">>,
@@ -159,8 +128,6 @@ init_per_suite(Config) ->
              end,
              5),
 
-    ct:log("codec(json): ~p~n", [pgmp_config:codec(json)]),
-    ct:log("codec(jsonb): ~p~n", [pgmp_config:codec(jsonb)]),
     ct:log("manager: ~p~n", [sys:get_state(Manager)]),
     ct:log("which_groups: ~p~n", [pgmp_pg:which_groups()]),
     ct:log("publication: ~p~n", [[pgmp_rep_log_ets, Publication]]),
@@ -177,7 +144,7 @@ init_per_suite(Config) ->
      {replica, binary_to_atom(Table)} | Config].
 
 
-hgetall_test(Config) ->
+hset_insert_false_test(Config) ->
     Manager = ?config(manager, Config),
     Table = ?config(table, Config),
     Schema = ?config(schema, Config),
@@ -192,17 +159,41 @@ hgetall_test(Config) ->
                     pgmp_rep_log_ets:when_ready(
                       #{server_ref => Manager})),
 
-    {K, A, B} = Existing = pick_one(ets:tab2list(Replica)),
-    ct:log("existing: ~p~n", [Existing]),
+    ct:log("~p~n", [lists:sort(ets:tab2list(Replica))]),
+
+    [{row_description, _},
+     {data_row, [K]},
+     {command_complete, {select, 1}}] = pgmp_connection_sync:query(
+                                          #{sql => "select gen_random_uuid()"}),
+    V = false,
+    ct:log("k: ~p, v: ~p~n", [K, V]),
+
+    ?assertEqual(
+       [{integer, 1}],
+       send_sync(
+         Config,
+         {array,
+          [{bulk, "hset"},
+           {bulk,
+            lists:join(
+              ".",
+              [Publication, Table, K])},
+           {bulk, "v"},
+           {bulk, atom_to_binary(V)}]})),
+
+    wait_for(
+      [{K, V}],
+      fun
+          () ->
+              ets:lookup(Replica, K)
+      end),
 
     ?assertEqual(
        [{array,
-         [{bulk, <<"k">>},
-          {bulk, K},
-          {bulk, <<"b">>},
-          {bulk, jsx:encode(B)},
-          {bulk, <<"a">>},
-          {bulk, jsx:encode(A)}]}],
+         [{bulk, <<"v">>},
+          {bulk, atom_to_binary(V)},
+          {bulk, <<"k">>},
+          {bulk, K}]}],
        send_sync(
          Config,
          {array,
@@ -213,7 +204,7 @@ hgetall_test(Config) ->
               [Publication, Table, K])}]})).
 
 
-hget_test(Config) ->
+hset_insert_true_test(Config) ->
     Manager = ?config(manager, Config),
     Table = ?config(table, Config),
     Schema = ?config(schema, Config),
@@ -228,32 +219,49 @@ hget_test(Config) ->
                     pgmp_rep_log_ets:when_ready(
                       #{server_ref => Manager})),
 
-    {K, A, B} = Existing = pick_one(ets:tab2list(Replica)),
-    ct:log("existing: ~p~n", [Existing]),
+    ct:log("~p~n", [lists:sort(ets:tab2list(Replica))]),
+
+    [{row_description, _},
+     {data_row, [K]},
+     {command_complete, {select, 1}}] = pgmp_connection_sync:query(
+                                          #{sql => "select gen_random_uuid()"}),
+    V = true,
+    ct:log("k: ~p, v: ~p~n", [K, V]),
 
     ?assertEqual(
-       [{bulk, jsx:encode(A)}],
+       [{integer, 1}],
        send_sync(
          Config,
          {array,
-          [{bulk, "hget"},
+          [{bulk, "hset"},
            {bulk,
             lists:join(
               ".",
               [Publication, Table, K])},
-           {bulk, "a"}]})),
+           {bulk, "v"},
+           {bulk, atom_to_binary(V)}]})),
+
+    wait_for(
+      [{K, V}],
+      fun
+          () ->
+              ets:lookup(Replica, K)
+      end),
 
     ?assertEqual(
-       [{bulk, jsx:encode(B)}],
+       [{array,
+         [{bulk, <<"v">>},
+          {bulk, atom_to_binary(V)},
+          {bulk, <<"k">>},
+          {bulk, K}]}],
        send_sync(
          Config,
          {array,
-          [{bulk, "hget"},
+          [{bulk, "hgetall"},
            {bulk,
             lists:join(
               ".",
-              [Publication, Table, K])},
-           {bulk, "b"}]})).
+              [Publication, Table, K])}]})).
 
 
 wait_for(Expected, Check) ->

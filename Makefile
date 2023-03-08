@@ -54,9 +54,9 @@ dep_resp = git https://github.com/shortishly/resp.git
 # dep_pgmp = ln ../../pgmp
 # dep_resp = ln ../../resp
 
-dep_mcd_commit = develop
-dep_pgmp_commit = 0.20.0
-dep_resp_commit = develop
+dep_mcd_commit = 0.5.0
+dep_pgmp_commit = 0.21.0
+dep_resp_commit = 0.3.0
 
 dep_cowboy_commit = 2.9.0
 dep_cowboy_telemetry_commit = v0.4.0

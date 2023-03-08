@@ -59,6 +59,18 @@ init_per_suite(Config) ->
     ct:log("pgmp logical replication name: ~p~n",
            [pgmp_config:replication(logical, publication_names)]),
 
+    logger:set_handler_config(
+      default,
+      #{formatter => {logger_formatter,
+                      #{template => [[logger_formatter, header],
+                                     {pid, [" ", pid, ""], ""},
+                                     {mfa, [" ", mfa, ":", line], ""},
+                                     "\n",
+                                     msg,
+                                     "\n"],
+                        legacy_header => true,
+                        single_line => false}}}),
+
     logger:set_module_level([], debug),
 
     [{command_complete,
@@ -135,8 +147,8 @@ init_per_suite(Config) ->
              end,
              5),
 
-    ct:pal("codec(json): ~p~n", [pgmp_config:codec(json)]),
-    ct:pal("codec(jsonb): ~p~n", [pgmp_config:codec(jsonb)]),
+    ct:log("codec(json): ~p~n", [pgmp_config:codec(json)]),
+    ct:log("codec(jsonb): ~p~n", [pgmp_config:codec(jsonb)]),
     ct:log("manager: ~p~n", [sys:get_state(Manager)]),
     ct:log("which_groups: ~p~n", [pgmp_pg:which_groups()]),
     ct:log("publication: ~p~n", [[pgmp_rep_log_ets, Publication]]),
@@ -632,7 +644,7 @@ hset_update_invalid_field_test(Config) ->
     V1 = alpha(5),
 
     ?assertMatch(
-       [{error, _}],
+       [{integer, 0}],
        send_sync(
          Config,
          {array,
@@ -667,7 +679,7 @@ hset_insert_invalid_field_test(Config) ->
     V1 = alpha(5),
 
     ?assertMatch(
-       [{error, _}],
+       [{integer, 0}],
        send_sync(
          Config,
          {array,
@@ -814,7 +826,7 @@ hset_update_invalid_type_test(Config) ->
     W1 = alpha(5),
 
     ?assertMatch(
-       [{error, _}],
+       [{integer, 0}],
        send_sync(
          Config,
          {array,
