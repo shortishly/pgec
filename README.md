@@ -20,7 +20,7 @@ real-time.
 
 - PostgreSQL [logical replication support][pgmp] for [cache
   consistency][shortishly-ccwsr]
-- [Redis compatible API](/doc/resp.md)
+- [Redis compatible API](docs/resp.md)
 - [Memcached compatible API][mcd]
 - REST API
 - a [compose](docs/compose.md) having PostgreSQL with example data,
