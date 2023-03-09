@@ -20,7 +20,7 @@ real-time.
 
 - PostgreSQL [logical replication support][pgmp] for [cache
   consistency][shortishly-ccwsr]
-- [Redis compatible API][resp]
+- [Redis compatible API](docs/resp.md)
 - [Memcached compatible API][mcd]
 - REST API
 - a [compose](docs/compose.md) having PostgreSQL with example data,
@@ -63,9 +63,8 @@ Sample data is populated from the scripts in [this
 directory](example/initdb.d), using this
 [publication](example/initdb.d/020-create-publication.sql). The
 compose includes a small load generator using table
-`randload`. Grafana dashboards: <http://localhost:3000/>.
-
-![Replication Dashboard](pgec-demo-grafana.gif)
+`randload`. Grafana dashboards: <http://localhost:3000/>, [more details
+of monitoring are here](docs/monitoring.md)
 
 The `grades` table is populated with data from:
 
@@ -210,53 +209,12 @@ curl -s http://localhost:8080/pub/cities/Tulsa/OK | jq
 }
 ```
 
-The Redis compatible API will write-through to PostgreSQL on mutating
-operations (e.g., `DEL` or `HSET`), and also publish notifications on
-cache changes.
-
-![redis api](/demos/pgec-redis-api-2023-03-08.svg)
-
-Read only operations such as [EXISTS][redis-commands-exists],
-[HGETALL][redis-commands-hgetall] or [HGET][redis-commands-hget] are
-handled directly by the [in memory ETS cache][erlang-ets]. These commands
-ultimately resolve in a call to [ets:lookup/2][erlang-ets-lookup],
-with the resultant [tuple][erlang-types-tuple] converted into a
-(usually) string representation for Redis.
-
-Mutating operations, such as [DEL][redis-commands-del] or
-[HSET][redis-commands-hset] automatically write through to PostgreSQL
-(after checking the cache to determine whether an
-[insert][postgresql-insert] or [update][postgresql-update] is the
-appropriate SQL statement to use). Streaming replication updates
-the in memory cache with the updated values from the database.
-
-The real-time replication stream from PostgreSQL is also published to
-subscribers with table level granularity. For example a subscription
-to `__key*__:pub.grades.*` will result in any changes to the `grades`
-table being published to that subscriber. Internally [erlang message
-passing][erlang-message-passing] is used with a [process group per
-table][erlang-org-pg]. Row level granularity is not currently
-implemented, but is on the back log.
-
 [cli-github-com]: https://cli.github.com
 [docker-com-get-docker]: https://docs.docker.com/get-docker/
-[erlang-ets-lookup]: https://www.erlang.org/doc/man/ets.html#lookup-2
-[erlang-ets]: https://www.erlang.org/doc/man/ets.html
-[erlang-message-passing]: https://www.erlang.org/blog/message-passing/#sending-messages
-[erlang-org-pg]: https://www.erlang.org/doc/man/pg.html
-[erlang-types-tuple]: https://www.erlang.org/doc/reference_manual/data_types.html#tuple
 [grafana]: https://grafana.com/
 [mcd]: https://github.com/shortishly/mcd
 [pgmp]: https://github.com/shortishly/pgmp
-[postgresql-insert]: https://www.postgresql.org/docs/current/sql-insert.html
 [postgresql-org]: https://www.postgresql.org/
-[postgresql-update]: https://www.postgresql.org/docs/current/sql-update.html
 [prometheus-io]: https://prometheus.io
-[redis-commands-del]: https://redis.io/commands/del/
-[redis-commands-exists]: https://redis.io/commands/exists/
-[redis-commands-hget]: https://redis.io/commands/hget/
-[redis-commands-hgetall]: https://redis.io/commands/hgetall/
-[redis-commands-hset]: https://redis.io/commands/hset/
-[resp]: https://github.com/shortishly/resp
 [shortishly-ccwsr]: https://shortishly.com/blog/cache-consistency-with-streaming-replication/
 [shortishly-pgec]: https://shortishly.com/blog/postgresql-edge-cache/

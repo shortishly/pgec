@@ -1,5 +1,33 @@
 # Redis Protocol
 
+The Redis compatible API will write-through to PostgreSQL on mutating
+operations (e.g., `DEL` or `HSET`), and also publish notifications on
+cache changes.
+
+![redis api](/demos/pgec-redis-api-2023-03-08.svg)
+
+Read only operations such as [EXISTS][redis-commands-exists],
+[HGETALL][redis-commands-hgetall] or [HGET][redis-commands-hget] are
+handled directly by the [in memory ETS cache][erlang-ets]. These commands
+ultimately resolve in a call to [ets:lookup/2][erlang-ets-lookup],
+with the resultant [tuple][erlang-types-tuple] converted into a
+(usually) string representation for Redis.
+
+Mutating operations, such as [DEL][redis-commands-del] or
+[HSET][redis-commands-hset] automatically write through to PostgreSQL
+(after checking the cache to determine whether an
+[insert][postgresql-insert] or [update][postgresql-update] is the
+appropriate SQL statement to use). Streaming replication updates
+the in memory cache with the updated values from the database.
+
+The real-time replication stream from PostgreSQL is also published to
+subscribers with table level granularity. For example a subscription
+to `__key*__:pub.grades.*` will result in any changes to the `grades`
+table being published to that subscriber. Internally [erlang message
+passing][erlang-message-passing] is used with a [process group per
+table][erlang-org-pg]. Row level granularity is not currently
+implemented, but is on the back log.
+
 RESP (the Redis Protocol) is handled by
 [pgec_resp_emulator](src/pgec_resp_emulator.erl), supporting the
 following commands.
@@ -224,3 +252,16 @@ A message will be streamed to the subscriber detailing the affected key.
 2) "__keyspace@0__:pub.grades.234-56-7890"
 3) "set"
 ```
+
+[erlang-ets-lookup]: https://www.erlang.org/doc/man/ets.html#lookup-2
+[erlang-ets]: https://www.erlang.org/doc/man/ets.html
+[erlang-message-passing]: https://www.erlang.org/blog/message-passing/#sending-messages
+[erlang-org-pg]: https://www.erlang.org/doc/man/pg.html
+[erlang-types-tuple]: https://www.erlang.org/doc/reference_manual/data_types.html#tuple
+[postgresql-insert]: https://www.postgresql.org/docs/current/sql-insert.html
+[postgresql-update]: https://www.postgresql.org/docs/current/sql-update.html
+[redis-commands-del]: https://redis.io/commands/del/
+[redis-commands-exists]: https://redis.io/commands/exists/
+[redis-commands-hget]: https://redis.io/commands/hget/
+[redis-commands-hgetall]: https://redis.io/commands/hgetall/
+[redis-commands-hset]: https://redis.io/commands/hset/
