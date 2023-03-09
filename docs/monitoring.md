@@ -5,7 +5,7 @@ pgec is instrumented using [telemetry][telemetry] with a
 
 Grafana dashboards: <http://localhost:3000/>.
 
-![Replication Dashboard](pgec-demo-grafana.gif)
+![Replication Dashboard](/pgec-demo-grafana.gif)
 
 
 The following sections describe the metrics that are exposed by pgec.
