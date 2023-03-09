@@ -3,6 +3,11 @@
 pgec is instrumented using [telemetry][telemetry] with a
 [Prometheus][prometheus-io] http adapter listening on port 9100.
 
+Grafana dashboards: <http://localhost:3000/>.
+
+![Replication Dashboard](pgec-demo-grafana.gif)
+
+
 The following sections describe the metrics that are exposed by pgec.
 
 ## BEAM
