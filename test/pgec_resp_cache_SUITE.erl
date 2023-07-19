@@ -134,9 +134,16 @@ init_per_suite(Config) ->
 
     [{command_complete, commit}] = pgmp_connection_sync:query(#{sql => "commit"}),
 
-    {ok, Sup} = pgmp_rep_sup:start_child(Publication),
+    [{_, DbSup, supervisor, [pgmp_db_sup]}] = supervisor:which_children(
+                                                pgmp_sup:get_child_pid(
+                                                  pgmp_sup,
+                                                  dbs_sup)),
 
-    {_, Manager, worker, _} = pgmp_sup:get_child(Sup, manager),
+    {ok, LogRepSup} = pgmp_db:start_replication_on_publication(
+                        pgmp_sup:get_child_pid(DbSup, db),
+                        Publication),
+
+    {_, Manager, worker, _} = pgmp_sup:get_child(LogRepSup, manager),
 
     ct:log("manager: ~p~n", [sys:get_state(Manager)]),
 
@@ -150,9 +157,9 @@ init_per_suite(Config) ->
     ct:log("codec(json): ~p~n", [pgmp_config:codec(json)]),
     ct:log("codec(jsonb): ~p~n", [pgmp_config:codec(jsonb)]),
     ct:log("manager: ~p~n", [sys:get_state(Manager)]),
-    ct:log("which_groups: ~p~n", [pgmp_pg:which_groups()]),
+    ct:log("which_groups: ~p~n", [pgec_pg:which_groups()]),
     ct:log("publication: ~p~n", [[pgmp_rep_log_ets, Publication]]),
-    ct:log("get_members: ~p~n", [pgmp_pg:get_members([pgmp_rep_log_ets, Publication])]),
+    ct:log("get_members: ~p~n", [pgec_pg:get_members([pgmp_rep_log_ets, Publication])]),
 
     {ok, Client} = resp_client:start(),
 
@@ -275,6 +282,101 @@ exists_test(Config) ->
                          {bulk,
                           lists:join(
                             ".", [Publication, Table, NotPresent])}]}).
+
+
+del_test(Config) ->
+    Manager = ?config(manager, Config),
+    Table = ?config(table, Config),
+    Schema = ?config(schema, Config),
+    Replica = ?config(replica, Config),
+    Port = ?config(port, Config),
+    Publication = ?config(publication, Config),
+
+    ct:log("schema: ~p,~ntable: ~p,~nreplica: ~p,~nport: ~p,~npublication: ~p~n",
+           [Schema, Table, Replica, Port, Publication]),
+
+    {reply, ok} = gen_statem:receive_response(
+                    pgmp_rep_log_ets:when_ready(
+                      #{server_ref => Manager})),
+
+    {K, _, _} = Existing = pick_one(ets:tab2list(Replica)),
+    ct:log("existing: ~p~n", [Existing]),
+
+    [{integer, 1}] = send_sync(
+                       Config,
+                       {array,
+                        [{bulk, "del"},
+
+                         {bulk,
+                          lists:join(
+                            ".", [Publication, Table, K])}]}),
+
+    wait_for(
+      [],
+      fun () ->
+              ets:lookup(Replica, K)
+      end).
+
+
+del_key_not_present_test(Config) ->
+    Manager = ?config(manager, Config),
+    Table = ?config(table, Config),
+    Schema = ?config(schema, Config),
+    Replica = ?config(replica, Config),
+    Port = ?config(port, Config),
+    Publication = ?config(publication, Config),
+
+    ct:log("schema: ~p,~ntable: ~p,~nreplica: ~p,~nport: ~p,~npublication: ~p~n",
+           [Schema, Table, Replica, Port, Publication]),
+
+    {reply, ok} = gen_statem:receive_response(
+                    pgmp_rep_log_ets:when_ready(
+                      #{server_ref => Manager})),
+
+
+    [{row_description, _},
+     {data_row, [NotPresent]},
+     {command_complete, {select, 1}}] = pgmp_connection_sync:query(
+                                          #{sql => "select gen_random_uuid()"}),
+
+    [{integer, 0}] = send_sync(
+                       Config,
+                       {array,
+                        [{bulk, "del"},
+
+                         {bulk,
+                          lists:join(
+                            ".", [Publication, Table, NotPresent])}]}).
+
+del_publication_not_present_test(Config) ->
+    Manager = ?config(manager, Config),
+    Table = ?config(table, Config),
+    Schema = ?config(schema, Config),
+    Replica = ?config(replica, Config),
+    Port = ?config(port, Config),
+    Publication = ?config(publication, Config),
+
+    ct:log("schema: ~p,~ntable: ~p,~nreplica: ~p,~nport: ~p,~npublication: ~p~n",
+           [Schema, Table, Replica, Port, Publication]),
+
+    {reply, ok} = gen_statem:receive_response(
+                    pgmp_rep_log_ets:when_ready(
+                      #{server_ref => Manager})),
+
+
+    [{row_description, _},
+     {data_row, [NotPresent]},
+     {command_complete, {select, 1}}] = pgmp_connection_sync:query(
+                                          #{sql => "select gen_random_uuid()"}),
+
+    [{integer, 0}] = send_sync(
+                       Config,
+                       {array,
+                        [{bulk, "del"},
+
+                         {bulk,
+                          lists:join(
+                            ".", ["zzzz", Table, NotPresent])}]}).
 
 
 hexists_test(Config) ->
@@ -922,7 +1024,7 @@ hset_insert_test(Config) ->
               [Publication, Table, K])}]})).
 
 
-update_test(Config) ->
+replicate_update_test(Config) ->
     Manager = ?config(manager, Config),
     Table = ?config(table, Config),
     Schema = ?config(schema, Config),
@@ -980,7 +1082,7 @@ update_test(Config) ->
     #{<<"v">> := V} = as_map(KV).
 
 
-delete_test(Config) ->
+replicate_delete_test(Config) ->
     Manager = ?config(manager, Config),
     Table = ?config(table, Config),
     Replica = ?config(replica, Config),
@@ -1027,7 +1129,7 @@ delete_test(Config) ->
                           ".", [Publication, Table, K])}]}).
 
 
-insert_test(Config) ->
+replicate_insert_test(Config) ->
     Manager = ?config(manager, Config),
     Table = ?config(table, Config),
     Replica = ?config(replica, Config),
@@ -1121,7 +1223,7 @@ end_per_suite(Config) ->
                            "drop table ~s cascade",
                            [Table]))})]),
 
-    common:purge_applications().
+    common:stop_applications().
 
 
 alpha(N) ->

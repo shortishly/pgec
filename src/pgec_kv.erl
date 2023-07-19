@@ -38,7 +38,8 @@ keys(#{keys := Positions, oids := Types}, Keys) ->
                 (Position) ->
                     lists:nth(Position, Types)
             end,
-            Positions)))).
+            Positions))),
+      pgmp_types:cache(pgec_util:db())).
 
 
 key(#{keys := Positions} = Metadata, Keys)
@@ -102,7 +103,7 @@ values(Pos, KeyPositions, Keys, [Value | Values]) ->
 combine(ContentType) ->
     fun
         (Column, OID, Value) ->
-            #{OID := ColumnType} = pgmp_types:cache(),
+            #{OID := ColumnType} = pgmp_types:cache(pgec_util:db()),
             {Column, value(ContentType, ColumnType, Value)}
     end.
 
@@ -256,13 +257,17 @@ value(ContentType,
     #{from => From, to => To};
 
 value(ContentType,
-      #{<<"typname">> := <<"timestamp">>} = ColumnType,
-      Value) when is_integer(Value) ->
+      #{<<"typname">> := Name} = ColumnType,
+      Value) when (Name == <<"timestamp">> orelse
+                   Name == <<"timestampz">>) andalso
+                  is_integer(Value) ->
     ?LOG_DEBUG(#{content_type => ContentType,
                  column_type => ColumnType,
                  value => Value}),
     iolist_to_binary(
-      calendar:system_time_to_rfc3339(Value,  [{unit, microsecond}]));
+      calendar:system_time_to_rfc3339(
+        Value,
+        [{unit, microsecond}, {offset, "Z"}]));
 
 value(ContentType, ColumnType, Value) ->
     ?LOG_DEBUG(#{content_type => ContentType,

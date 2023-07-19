@@ -45,12 +45,12 @@ handle_event({call, _}, {notify, _}, ready, _) ->
     {keep_state_and_data, nei(get_members)};
 
 handle_event(internal, join, _, #{publication := Publication}) ->
-    pgmp_pg:join([pgmp_rep_log_ets, Publication, notifications]),
+    pgec_pg:join([pgmp_rep_log_ets, Publication, notifications]),
     keep_state_and_data;
 
 handle_event(internal, get_members, _, #{publication := Publication}) ->
     {keep_state_and_data,
-     nei({get_members, pgmp_pg:get_members([pgmp_rep_log_ets, Publication])})};
+     nei({get_members, pgec_pg:get_members([pgmp_rep_log_ets, Publication])})};
 
 handle_event(internal, {get_members, []}, _, _) ->
     {keep_state_and_data, pgec_statem:generic_timeout(no_members)};
@@ -87,7 +87,7 @@ handle_event(
   {response, #{label := #{f := metadata}, reply := Metadata}},
   _,
   #{publication := Publication}) ->
-    Types = pgmp_types:cache(),
+    Types = pgmp_types:cache(pgec_util:db()),
 
     ets:insert(
       pgec_metadata,
@@ -131,7 +131,7 @@ handle_event(info, Msg, _, #{requests := Existing} = Data) ->
 
 
 terminate(_Reason, _State, #{publication := Publication}) ->
-    pgmp_pg:leave([pgmp_rep_log_ets, Publication, notifications]);
+    pgec_pg:leave([pgmp_rep_log_ets, Publication, notifications]);
 
 terminate(_Reason, _State, _Data) ->
     ok.

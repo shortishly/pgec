@@ -115,9 +115,17 @@ init_per_suite(Config) ->
 
     [{command_complete, commit}] = pgmp_connection_sync:query(#{sql => "commit"}),
 
-    {ok, Sup} = pgmp_rep_sup:start_child(Publication),
 
-    {_, Manager, worker, _} = pgmp_sup:get_child(Sup, manager),
+    [{_, DbSup, supervisor, [pgmp_db_sup]}] = supervisor:which_children(
+                                                pgmp_sup:get_child_pid(
+                                                  pgmp_sup,
+                                                  dbs_sup)),
+
+    {ok, LogRepSup} = pgmp_db:start_replication_on_publication(
+                        pgmp_sup:get_child_pid(DbSup, db),
+                        Publication),
+
+    {_, Manager, worker, _} = pgmp_sup:get_child(LogRepSup, manager),
 
     ct:log("manager: ~p~n", [sys:get_state(Manager)]),
 
@@ -129,9 +137,9 @@ init_per_suite(Config) ->
              5),
 
     ct:log("manager: ~p~n", [sys:get_state(Manager)]),
-    ct:log("which_groups: ~p~n", [pgmp_pg:which_groups()]),
+    ct:log("which_groups: ~p~n", [pgec_pg:which_groups()]),
     ct:log("publication: ~p~n", [[pgmp_rep_log_ets, Publication]]),
-    ct:log("get_members: ~p~n", [pgmp_pg:get_members([pgmp_rep_log_ets, Publication])]),
+    ct:log("get_members: ~p~n", [pgec_pg:get_members([pgmp_rep_log_ets, Publication])]),
 
     {ok, Client} = resp_client:start(),
 
@@ -258,7 +266,7 @@ end_per_suite(Config) ->
                            "drop table ~s cascade",
                            [Table]))})]),
 
-    common:purge_applications().
+    common:stop_applications().
 
 
 alpha(N) ->

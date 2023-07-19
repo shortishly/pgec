@@ -245,8 +245,8 @@ recv(#{command := #{name := del},
                                                                  all))}),
 
                          [{command_complete,
-                           {delete, 1}}] = execute(#{}),
-                         A + 1
+                           {delete, Count}}] = execute(#{}),
+                         A + Count
                  end,
                  0,
                  Keys),
@@ -396,7 +396,7 @@ recv(#{command := #{name := psubscribe},
     [_, PTK] = string:split(Pattern, ":"),
     try ptk(PTK) of
         #{publication := Publication, table := Table} ->
-            pgmp_pg:join(#{m => pgmp_rep_log_ets,
+            pgec_pg:join(#{m => pgmp_rep_log_ets,
                            publication => Publication,
                            name => Table}),
             {continue,

@@ -13,33 +13,33 @@
 %% limitations under the License.
 
 
--module(common).
+-module(pgec_pg).
 
 
--export([all/1]).
--export([stop_applications/0]).
--include_lib("common_test/include/ct.hrl").
+-export([get_members/1]).
+-export([join/1]).
+-export([leave/1]).
+-export([which_groups/0]).
+-include_lib("kernel/include/logger.hrl").
 
 
-is_a_test(is_a_test) ->
-    false;
-is_a_test(Function) ->
-    hd(lists:reverse(string:tokens(atom_to_list(Function), "_"))) =:= "test".
+leave(Group) ->
+    ?LOG_DEBUG(#{group => Group}),
+    pg:leave(pgec_util:scope(), Group, self()).
 
 
-all(Module) ->
-    [Function || {Function, Arity} <- Module:module_info(exports),
-                 Arity =:= 1,
-                 is_a_test(Function)].
+join(Group) ->
+    ?LOG_DEBUG(#{group => Group}),
+    pg:join(pgec_util:scope(), Group, self()).
 
 
-stop_applications() ->
-    ?FUNCTION_NAME([pgec, pgmp, mcd, resp]).
+get_members(Group) ->
+    Scope = pgec_util:scope(),
+    ?LOG_DEBUG(#{scope => Scope, group => Group}),
+    pg:get_members(Scope, Group).
 
 
-stop_applications([Application | Applications]) ->
-    application:stop(Application),
-    ?FUNCTION_NAME(Applications);
-
-stop_applications([]) ->
-    ok.
+which_groups() ->
+    Scope = pgec_util:scope(),
+    ?LOG_DEBUG(#{scope => Scope}),
+    pg:which_groups(Scope).

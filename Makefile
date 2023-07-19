@@ -17,6 +17,11 @@ PROJECT = pgec
 PROJECT_DESCRIPTION = PostgreSQL Edge Cache
 PROJECT_VERSION = ${shell git describe --tags}
 
+COVER = 1
+
+COVER_REPORT_DIR = _site/cover
+CT_LOGS_DIR = _site/ct
+
 
 BUILD_DEPS += relx
 RELX_TAR = 0
@@ -54,15 +59,16 @@ dep_resp = git https://github.com/shortishly/resp.git
 # dep_pgmp = ln ../../pgmp
 # dep_resp = ln ../../resp
 
-dep_mcd_commit = 0.5.0
-dep_pgmp_commit = 0.21.0
-dep_resp_commit = 0.3.0
+dep_mcd_commit = develop
+dep_pgmp_commit = develop
+dep_resp_commit = develop
 
-dep_cowboy_commit = 2.9.0
+dep_cowboy_commit = 2.10.0
 dep_cowboy_telemetry_commit = v0.4.0
 dep_jsx_commit = v3.1.0
 dep_metrics_commit = 0.2.0
 
+EDOC_OPTS = {preprocess, true}, {dir, "_site/edoc"}
 
 PLT_APPS = \
 	any \
