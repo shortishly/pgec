@@ -61,7 +61,7 @@ jobs:
       - uses: actions/upload-artifact@v3
         with:
           name: ${{env.ARTIFACT_NAME}}
-          path: logs
+          path: _site/ct
   package:
     needs: test
     permissions:
