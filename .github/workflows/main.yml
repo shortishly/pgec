@@ -115,9 +115,8 @@ jobs:
           PGEC_IMAGE: ${{needs.package.outputs.image}}
           PGEC_VERSION: ${{needs.package.outputs.tags}}
       - run: |
-          sudo su -
-          apt-get update
-          apt-get install -y redis-tools netcat bats
-          update-alternatives --set nc /bin/nc.traditional
+          sudo apt-get update
+          sudo apt-get install -y redis-tools netcat bats
+          sudo update-alternatives --set nc /bin/nc.traditional
       - run: |
           bats test/bats
