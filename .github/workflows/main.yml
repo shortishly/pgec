@@ -84,6 +84,7 @@ jobs:
             with a memcached and REST API.
           image-licenses: Apache-2.0
       - run: echo image-tags ${{steps.bdra.outputs.tags}}
+        shell: bash
       - uses: snyk/actions/docker@master
         env:
           SNYK_TOKEN: ${{secrets.SNYK_TOKEN}}
