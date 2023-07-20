@@ -73,6 +73,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: shortishly/beam-docker-release-action@main
+        id: bdra
         with:
           registry: ${{env.REGISTRY}}
           username: ${{github.actor}}
@@ -82,6 +83,7 @@ jobs:
             pgec is a real-time in memory database replication cache,
             with a memcached and REST API.
           image-licenses: Apache-2.0
+      - run: echo image-tags ${{steps.bdra.outputs.tags}}
       - uses: snyk/actions/docker@master
         env:
           SNYK_TOKEN: ${{secrets.SNYK_TOKEN}}
