@@ -143,8 +143,6 @@ jobs:
     needs: package
     strategy:
       matrix:
-        otp:
-          - 26
         pg:
           - 'postgres:15'
     runs-on: ubuntu-latest
@@ -164,5 +162,7 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y redis-tools netcat netcat-traditional bats
           sudo update-alternatives --set nc /bin/nc.traditional
+      - run: |
+          sleep 60
       - run: |
           bats test/bats
