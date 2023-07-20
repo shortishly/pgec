@@ -21,7 +21,53 @@ jobs:
         with:
           otp-version: ${{matrix.otp}}
       - run: make deps app dialyze eunit
-  test:
+  site:
+    needs: build
+    strategy:
+      matrix:
+        otp:
+          - 26
+        pg:
+          - 'postgres:15'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - run: >-
+          docker-compose
+          --file etc/github-ci/compose.yaml
+          --project-directory etc/github-ci
+          up
+          --detach
+        env:
+          POSTGRES_IMAGE: ${{matrix.pg}}
+      - uses: erlef/setup-beam@v1
+        with:
+          otp-version: ${{matrix.otp}}
+      - run: make eunit ct
+        env:
+          PGMP_PGMP_REPLICATION_ENABLED: false
+          PGMP_DATABASE_USER: postgres
+          PGMP_DATABASE_NAME: postgres
+          PGMP_DATABASE_PASSWORD: postgres
+      - run: make edoc
+      - run: make cover-report
+      - run: bin/coverdata --output _site/cover/coverage.json --precision 3
+      - uses: actions/upload-pages-artifact@v1
+        with:
+          path: _site
+  deploy:
+    needs: site
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{steps.deployment.outputs.page_url}}
+    runs-on: ubuntu-latest
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v2
+  common-test:
     needs: build
     strategy:
       matrix:
@@ -116,7 +162,7 @@ jobs:
           PGEC_VERSION: ${{needs.package.outputs.tags}}
       - run: |
           sudo apt-get update
-          sudo apt-get install -y redis-tools netcat bats
+          sudo apt-get install -y redis-tools netcat netcat-traditional bats
           sudo update-alternatives --set nc /bin/nc.traditional
       - run: |
           bats test/bats
