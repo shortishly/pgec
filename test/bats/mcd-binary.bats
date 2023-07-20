@@ -16,7 +16,7 @@
 
 
 @test "get pub.col_binary.1" {
-    run bash -c "echo $BATS_TEST_DESCRIPTION | nc -c localhost 11211 | sed 's/\r$//'"
+    run bash -c "echo $BATS_TEST_DESCRIPTION | nc -C -q 5 localhost 11211 | sed 's/\r$//'"
     echo -n "${lines[1]}" >line.out
     [ "${lines[0]}" = "VALUE pub.col_binary.1 0 23" ]
     [ "${lines[2]}" = "END" ]

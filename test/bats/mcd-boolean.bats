@@ -16,12 +16,12 @@
 
 
 @test "get pub.col_boolean.0" {
-    run bash -c "echo $BATS_TEST_DESCRIPTION | nc -c localhost 11211 | sed 's/\r$//'"
+    run bash -c "echo $BATS_TEST_DESCRIPTION | nc -C -q 5 localhost 11211 | sed 's/\r$//'"
     [ "${lines[0]}" = "END" ]
 }
 
 @test "get pub.col_boolean.1" {
-    run bash -c "echo $BATS_TEST_DESCRIPTION | nc -c localhost 11211 | sed 's/\r$//'"
+    run bash -c "echo $BATS_TEST_DESCRIPTION | nc -C -q 5 localhost 11211 | sed 's/\r$//'"
     [ "${lines[0]}" = "VALUE pub.col_boolean.1 0 17" ]
     [ "${lines[1]}" = "{\"a\":true,\"id\":1}" ]
     [ "${lines[2]}" = "END" ]

@@ -54,9 +54,7 @@ jobs:
           PGMP_DATABASE_PASSWORD: postgres
       - run: |
           echo MATRIX_OTP="${{matrix.otp}}" >> $GITHUB_ENV
-      - run: |
           echo MATRIX_PG="${{matrix.pg}}" >> $GITHUB_ENV
-      - run: |
           echo ARTIFACT_NAME="ct-logs-otp-${MATRIX_OTP}-pg-${MATRIX_PG//[:\/]/-}" >> $GITHUB_ENV
       - uses: actions/upload-artifact@v3
         with:
@@ -87,13 +85,17 @@ jobs:
         shell: bash
       - run: echo image ${{steps.bdra.outputs.image}}
         shell: bash
-      - uses: snyk/actions/docker@master
+  security-scan-container:
+    needs: package
+    runs-on: ubuntu-latest
+    steps:
+      - uses: snyk/actions/docker@0.4.0
         env:
           SNYK_TOKEN: ${{secrets.SNYK_TOKEN}}
         with:
-          image: ${{env.DOCKER_IMAGE_TAGS}}
-  site:
-    needs: build
+          image: ${{steps.bdra.outputs.image}}:${{steps.bdra.outputs.image}}
+  smoke-test:
+    needs: package
     strategy:
       matrix:
         otp:
@@ -104,37 +106,19 @@ jobs:
     steps:
       - uses: actions/checkout@v3
       - run: >-
-          docker-compose
-          --file etc/github-ci/compose.yaml
-          --project-directory etc/github-ci
+          docker compose
+          --profile all
           up
           --detach
+          --remove-orphans
         env:
           POSTGRES_IMAGE: ${{matrix.pg}}
-      - uses: erlef/setup-beam@v1
-        with:
-          otp-version: ${{matrix.otp}}
-      - run: make eunit ct
-        env:
-          PGMP_PGMP_REPLICATION_ENABLED: false
-          PGMP_DATABASE_USER: postgres
-          PGMP_DATABASE_NAME: postgres
-          PGMP_DATABASE_PASSWORD: postgres
-      - run: make edoc
-      - run: make cover-report
-      - run: bin/coverdata --output _site/cover/coverage.json --precision 3
-      - uses: actions/upload-pages-artifact@v1
-        with:
-          path: _site
-  deploy:
-    needs: site
-    permissions:
-      pages: write
-      id-token: write
-    environment:
-      name: github-pages
-      url: ${{steps.deployment.outputs.page_url}}
-    runs-on: ubuntu-latest
-    steps:
-      - id: deployment
-        uses: actions/deploy-pages@v2
+          PGEC_IMAGE: ${{steps.bdra.outputs.image}}
+          PGEC_VERSION: ${{steps.bdra.outputs.tags}}
+      - run: |
+          sudo su -
+          apt-get update
+          apt-get install -y redis-tools netcat bats
+          update-alternatives --set nc /bin/nc.traditional
+      - run: |
+          bats test/bats
