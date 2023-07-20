@@ -107,7 +107,7 @@ jobs:
           name: ${{env.ARTIFACT_NAME}}
           path: _site/ct
   package:
-    needs: test
+    needs: common-test
     permissions:
       packages: write
     strategy:
