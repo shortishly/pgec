@@ -69,6 +69,9 @@ jobs:
         otp:
           - 26
     runs-on: ubuntu-latest
+    outputs:
+      image: ${{steps.bdra.outputs.image}}
+      tags: ${{steps.bdra.outputs.tags}}
     steps:
       - uses: shortishly/beam-docker-release-action@main
         id: bdra
@@ -81,10 +84,6 @@ jobs:
             pgec is a real-time in memory database replication cache,
             with a memcached and REST API.
           image-licenses: Apache-2.0
-      - run: echo image-tags ${{steps.bdra.outputs.tags}}
-        shell: bash
-      - run: echo image ${{steps.bdra.outputs.image}}
-        shell: bash
   security-scan-container:
     needs: package
     runs-on: ubuntu-latest
@@ -93,7 +92,7 @@ jobs:
         env:
           SNYK_TOKEN: ${{secrets.SNYK_TOKEN}}
         with:
-          image: ${{steps.bdra.outputs.image}}:${{steps.bdra.outputs.image}}
+          image: ${{needs.package.outputs.image}}:${{needs.package.outputs.tags}}
   smoke-test:
     needs: package
     strategy:
@@ -113,8 +112,8 @@ jobs:
           --remove-orphans
         env:
           POSTGRES_IMAGE: ${{matrix.pg}}
-          PGEC_IMAGE: ${{steps.bdra.outputs.image}}
-          PGEC_VERSION: ${{steps.bdra.outputs.tags}}
+          PGEC_IMAGE: ${{needs.package.outputs.image}}
+          PGEC_VERSION: ${{needs.package.outputs.tags}}
       - run: |
           sudo su -
           apt-get update
