@@ -51,7 +51,11 @@ jobs:
           PGMP_DATABASE_PASSWORD: postgres
       - run: make edoc
       - run: make cover-report
-      - run: bin/coverdata --output _site/cover/coverage.json --precision 3
+      - uses: shortishly/coverdata@main
+        with:
+          input: _site/cover
+          output: _site/cover/coverage.json
+          otp-version: ${{matrix.otp}}
       - uses: actions/upload-pages-artifact@v1
         with:
           path: _site
