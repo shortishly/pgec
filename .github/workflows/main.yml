@@ -16,7 +16,7 @@ jobs:
           - 26
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
       - uses: erlef/setup-beam@v1
         with:
           otp-version: ${{matrix.otp}}
@@ -31,7 +31,7 @@ jobs:
           - 'postgres:15'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
       - run: >-
           docker-compose
           --file etc/github-ci/compose.yaml
@@ -84,7 +84,7 @@ jobs:
           - 'postgis/postgis:15-3.3'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
       - uses: erlef/setup-beam@v1
         with:
           otp-version: ${{matrix.otp}}
@@ -151,7 +151,7 @@ jobs:
           - 'postgres:15'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
       - run: >-
           docker compose
           --profile all
