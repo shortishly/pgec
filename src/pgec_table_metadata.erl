@@ -22,6 +22,7 @@
 -export([start_link/1]).
 -export([terminate/3]).
 -import(pgec_statem, [nei/1]).
+-include_lib("kernel/include/logger.hrl").
 
 
 start_link(Arg) ->
@@ -41,7 +42,15 @@ init([Arg]) ->
      [nei(join), nei(get_members)]}.
 
 
-handle_event({call, _}, {notify, _}, ready, _) ->
+handle_event({call, _},
+             {notify, #{action := progress} = Notification},
+             ready,
+             _) ->
+    ?LOG_DEBUG(#{notification => Notification}),
+    keep_state_and_data;
+
+handle_event({call, _}, {notify, Notification}, ready, _) ->
+    ?LOG_DEBUG(#{notification => Notification}),
     {keep_state_and_data, nei(get_members)};
 
 handle_event(internal, join, _, #{publication := Publication}) ->
