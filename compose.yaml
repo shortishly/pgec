@@ -55,7 +55,7 @@ services:
       ${PULL_POLICY:-missing}
   load-generator:
     image:
-      postgres:${POSTGRES_VERSION:-16}
+      postgres:${POSTGRES_VERSION:-16.1}
     environment:
       PGPASSWORD: postgres
     command:
@@ -72,7 +72,7 @@ services:
     image:
       ${PGEC_IMAGE:-ghcr.io/shortishly/pgec:${PGEC_VERSION:-latest}}
     environment:
-      PGMP_DATABASE_HOSTNAME: postgres
+      PGMP_DATABASE_HOSTNAME: db
       PGMP_DATABASE_PASSWORD: postgres
       PGMP_DATABASE_USER: postgres
       PGMP_REPLICATION_LOGICAL_PUBLICATION_NAMES: pub
