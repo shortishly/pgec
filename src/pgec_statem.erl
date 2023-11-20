@@ -20,7 +20,38 @@
 -export([generic_timeout/1]).
 -export([generic_timeout/2]).
 -export([nei/1]).
+-export([send_request/1]).
 
+
+-type request_id() :: gen_statem:request_id().
+-type request_id_collection() :: gen_statem:request_id_collection().
+-type server_ref() :: gen_statem:server_ref().
+
+-type collection_req() :: #{server_ref := server_ref(),
+                            request := any(),
+                            label := any(),
+                            requests := request_id_collection()}.
+
+-type id_req() :: #{server_ref := server_ref(),
+                    request := any()}.
+
+-spec send_request(collection_req()) -> request_id_collection();
+                  (id_req()) -> request_id().
+
+send_request(#{server_ref := ServerRef,
+               request := Request,
+               label := Label,
+               requests := Requests}) ->
+    gen_statem:send_request(ServerRef, Request, Label, Requests);
+
+send_request(#{requests := _} = Arg) ->
+    error(badarg, [Arg]);
+
+send_request(#{server_ref := ServerRef, request := Request}) ->
+    gen_statem:send_request(ServerRef, Request).
+
+
+-spec nei(any()) -> {next_event, internal, any()}.
 
 nei(Event) ->
     {next_event, internal, Event}.

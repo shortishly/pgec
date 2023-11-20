@@ -18,3 +18,11 @@
 [cowboy, request, exception].
 [cowboy, request, start].
 [cowboy, request, stop].
+
+[pgec, replica, reqids_size].
+[pgec, replica, storage].
+
+[pgec, storage, delete].
+[pgec, storage, get].
+[pgec, storage, put].
+[pgec, storage, reqids_size].

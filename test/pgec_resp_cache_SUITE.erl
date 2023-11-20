@@ -37,6 +37,13 @@ init_per_suite(Config) ->
     application:set_env(pgmp,
                         replication_logical_publication_names,
                         Publication),
+    application:set_env(pgmp,
+                        replication_logical_temporary,
+                        false),
+    application:set_env(pgmp,
+                        replication_logical_module,
+                        pgec_replica),
+
     application:set_env(pgmp, pgmp_replication_enabled, false),
     application:set_env(pgmp, mm_trace, false),
     application:set_env(pgmp, mm_log, true),
@@ -49,6 +56,12 @@ init_per_suite(Config) ->
 
     application:set_env(pgec, http_port, Port),
     application:set_env(pgec, table_metadata_trace, false),
+
+    RootPath = filename:join(
+                 ?config(manager, Config),
+                 "leveled"),
+    ok = filelib:ensure_dir(RootPath),
+    application:set_env(pgec, leveled_root_path, RootPath),
 
     application:set_env(mcd, protocol_callback, pgec_mcd_emulator),
     application:set_env(resp, protocol_callback, pgec_resp_emulator),
@@ -139,8 +152,10 @@ init_per_suite(Config) ->
                                                   pgmp_sup,
                                                   dbs_sup)),
 
+    DB = pgmp_sup:get_child_pid(DbSup, db),
+
     {ok, LogRepSup} = pgmp_db:start_replication_on_publication(
-                        pgmp_sup:get_child_pid(DbSup, db),
+                        DB,
                         Publication),
 
     {_, Manager, worker, _} = pgmp_sup:get_child(LogRepSup, manager),
@@ -158,18 +173,32 @@ init_per_suite(Config) ->
     ct:log("codec(jsonb): ~p~n", [pgmp_config:codec(jsonb)]),
     ct:log("manager: ~p~n", [sys:get_state(Manager)]),
     ct:log("which_groups: ~p~n", [pgec_pg:which_groups()]),
-    ct:log("publication: ~p~n", [[pgmp_rep_log_ets, Publication]]),
-    ct:log("get_members: ~p~n", [pgec_pg:get_members([pgmp_rep_log_ets, Publication])]),
+    ct:log("publication: ~p~n", [[pgec_replica, Publication]]),
+    ct:log("get_members: ~p~n", [pgec_pg:get_members([pgec_replica, Publication])]),
+
+    wait_for(false,
+             fun
+                 () ->
+                     pgec_storage_sync:keys(
+                       #{publication => Publication,
+                         table => Table}) == []
+             end,
+             5),
+
+    ct:log("keys: ~p~n",
+           [pgec_storage_sync:keys(
+              #{publication => Publication,
+                table => Table})]),
 
     {ok, Client} = resp_client:start(),
 
     [{manager, Manager},
+     {db, DB},
      {publication, Publication},
      {schema, Schema},
      {table, Table},
      {port, 8080},
-     {client, Client},
-     {replica, binary_to_atom(Table)} | Config].
+     {client, Client} | Config].
 
 
 ping_simple_test(Config) ->
@@ -243,19 +272,22 @@ exists_test(Config) ->
     Manager = ?config(manager, Config),
     Table = ?config(table, Config),
     Schema = ?config(schema, Config),
-    Replica = ?config(replica, Config),
     Port = ?config(port, Config),
     Publication = ?config(publication, Config),
 
-    ct:log("schema: ~p,~ntable: ~p,~nreplica: ~p,~nport: ~p,~npublication: ~p~n",
-           [Schema, Table, Replica, Port, Publication]),
+    ct:log("schema: ~p,~ntable: ~p,~nport: ~p,~npublication: ~p~n",
+           [Schema, Table, Port, Publication]),
 
     {reply, ok} = gen_statem:receive_response(
-                    pgmp_rep_log_ets:when_ready(
+                    pgec_replica:when_ready(
                       #{server_ref => Manager})),
 
-    {K, _, _} = Existing = pick_one(ets:tab2list(Replica)),
-    ct:log("existing: ~p~n", [Existing]),
+    K= pick_one(
+         pgec_storage_sync:keys(
+           #{publication => Publication,
+             table => Table})),
+
+    ct:log("k: ~p~n", [K]),
 
     [{row_description, _},
      {data_row, [NotPresent]},
@@ -288,19 +320,21 @@ del_test(Config) ->
     Manager = ?config(manager, Config),
     Table = ?config(table, Config),
     Schema = ?config(schema, Config),
-    Replica = ?config(replica, Config),
     Port = ?config(port, Config),
     Publication = ?config(publication, Config),
 
-    ct:log("schema: ~p,~ntable: ~p,~nreplica: ~p,~nport: ~p,~npublication: ~p~n",
-           [Schema, Table, Replica, Port, Publication]),
+    ct:log("schema: ~p,~ntable: ~p,~nport: ~p,~npublication: ~p~n",
+           [Schema, Table, Port, Publication]),
 
     {reply, ok} = gen_statem:receive_response(
-                    pgmp_rep_log_ets:when_ready(
+                    pgec_replica:when_ready(
                       #{server_ref => Manager})),
 
-    {K, _, _} = Existing = pick_one(ets:tab2list(Replica)),
-    ct:log("existing: ~p~n", [Existing]),
+    K = pick_one(
+          pgec_storage_sync:keys(
+            #{publication => Publication,
+              table => Table})),
+    ct:log("k: ~p~n", [K]),
 
     [{integer, 1}] = send_sync(
                        Config,
@@ -312,9 +346,12 @@ del_test(Config) ->
                             ".", [Publication, Table, K])}]}),
 
     wait_for(
-      [],
+      not_found,
       fun () ->
-              ets:lookup(Replica, K)
+              pgec_storage_sync:read(
+                #{publication => Publication,
+                  table => Table,
+                  key => K})
       end).
 
 
@@ -322,15 +359,14 @@ del_key_not_present_test(Config) ->
     Manager = ?config(manager, Config),
     Table = ?config(table, Config),
     Schema = ?config(schema, Config),
-    Replica = ?config(replica, Config),
     Port = ?config(port, Config),
     Publication = ?config(publication, Config),
 
-    ct:log("schema: ~p,~ntable: ~p,~nreplica: ~p,~nport: ~p,~npublication: ~p~n",
-           [Schema, Table, Replica, Port, Publication]),
+    ct:log("schema: ~p,~ntable: ~p,~nport: ~p,~npublication: ~p~n",
+           [Schema, Table, Port, Publication]),
 
     {reply, ok} = gen_statem:receive_response(
-                    pgmp_rep_log_ets:when_ready(
+                    pgec_replica:when_ready(
                       #{server_ref => Manager})),
 
 
@@ -352,15 +388,14 @@ del_publication_not_present_test(Config) ->
     Manager = ?config(manager, Config),
     Table = ?config(table, Config),
     Schema = ?config(schema, Config),
-    Replica = ?config(replica, Config),
     Port = ?config(port, Config),
     Publication = ?config(publication, Config),
 
-    ct:log("schema: ~p,~ntable: ~p,~nreplica: ~p,~nport: ~p,~npublication: ~p~n",
-           [Schema, Table, Replica, Port, Publication]),
+    ct:log("schema: ~p,~ntable: ~p,~nport: ~p,~npublication: ~p~n",
+           [Schema, Table, Port, Publication]),
 
     {reply, ok} = gen_statem:receive_response(
-                    pgmp_rep_log_ets:when_ready(
+                    pgec_replica:when_ready(
                       #{server_ref => Manager})),
 
 
@@ -383,19 +418,21 @@ hexists_test(Config) ->
     Manager = ?config(manager, Config),
     Table = ?config(table, Config),
     Schema = ?config(schema, Config),
-    Replica = ?config(replica, Config),
     Port = ?config(port, Config),
     Publication = ?config(publication, Config),
 
-    ct:log("schema: ~p,~ntable: ~p,~nreplica: ~p,~nport: ~p,~npublication: ~p~n",
-           [Schema, Table, Replica, Port, Publication]),
+    ct:log("schema: ~p,~ntable: ~p,~nport: ~p,~npublication: ~p~n",
+           [Schema, Table, Port, Publication]),
 
     {reply, ok} = gen_statem:receive_response(
-                    pgmp_rep_log_ets:when_ready(
+                    pgec_replica:when_ready(
                       #{server_ref => Manager})),
 
-    {K, _, _} = Existing = pick_one(ets:tab2list(Replica)),
-    ct:log("existing: ~p~n", [Existing]),
+    K = pick_one(
+          pgec_storage_sync:keys(
+            #{publication => Publication,
+              table => Table})),
+    ct:log("k: ~p~n", [K]),
 
     [{integer, 0}] = send_sync(
                        Config,
@@ -452,19 +489,29 @@ hget_test(Config) ->
     Manager = ?config(manager, Config),
     Table = ?config(table, Config),
     Schema = ?config(schema, Config),
-    Replica = ?config(replica, Config),
     Port = ?config(port, Config),
     Publication = ?config(publication, Config),
 
-    ct:log("schema: ~p,~ntable: ~p,~nreplica: ~p,~nport: ~p,~npublication: ~p~n",
-           [Schema, Table, Replica, Port, Publication]),
+    ct:log("schema: ~p,~ntable: ~p,~nport: ~p,~npublication: ~p~n",
+           [Schema, Table, Port, Publication]),
 
     {reply, ok} = gen_statem:receive_response(
-                    pgmp_rep_log_ets:when_ready(
+                    pgec_replica:when_ready(
                       #{server_ref => Manager})),
 
-    {K, V, _} = Existing = pick_one(ets:tab2list(Replica)),
+    K = pick_one(
+          pgec_storage_sync:keys(
+            #{publication => Publication,
+              table => Table})),
+    ct:log("k: ~p~n", [K]),
+
+    {ok, {V, _} = Existing} = pgec_storage_sync:read(
+                                #{publication => Publication,
+                                  table => Table,
+                                  key => K}),
+
     ct:log("existing: ~p~n", [Existing]),
+
 
     [{bulk, null}] = send_sync(
                        Config,
@@ -538,18 +585,28 @@ hgetall_test(Config) ->
     Manager = ?config(manager, Config),
     Table = ?config(table, Config),
     Schema = ?config(schema, Config),
-    Replica = ?config(replica, Config),
     Port = ?config(port, Config),
     Publication = ?config(publication, Config),
 
-    ct:log("schema: ~p,~ntable: ~p,~nreplica: ~p,~nport: ~p,~npublication: ~p~n",
-           [Schema, Table, Replica, Port, Publication]),
+    ct:log("schema: ~p,~ntable: ~p,~nport: ~p,~npublication: ~p~n",
+           [Schema, Table, Port, Publication]),
 
     {reply, ok} = gen_statem:receive_response(
-                    pgmp_rep_log_ets:when_ready(
+                    pgec_replica:when_ready(
                       #{server_ref => Manager})),
 
-    {K, V, _} = Existing = pick_one(ets:tab2list(Replica)),
+    K = pick_one(
+          pgec_storage_sync:keys(
+            #{publication => Publication,
+              table => Table})),
+    ct:log("k: ~p~n", [K]),
+
+
+    {ok, {V, _} = Existing} = pgec_storage_sync:read(
+                                #{publication => Publication,
+                                  table => Table,
+                                  key => K}),
+
     ct:log("existing: ~p~n", [Existing]),
 
     [{array, []}] = send_sync(
@@ -604,19 +661,22 @@ hlen_test(Config) ->
     Manager = ?config(manager, Config),
     Table = ?config(table, Config),
     Schema = ?config(schema, Config),
-    Replica = ?config(replica, Config),
     Port = ?config(port, Config),
     Publication = ?config(publication, Config),
 
-    ct:log("schema: ~p,~ntable: ~p,~nreplica: ~p,~nport: ~p,~npublication: ~p~n",
-           [Schema, Table, Replica, Port, Publication]),
+    ct:log("schema: ~p,~ntable: ~p,~nport: ~p,~npublication: ~p~n",
+           [Schema, Table, Port, Publication]),
 
     {reply, ok} = gen_statem:receive_response(
-                    pgmp_rep_log_ets:when_ready(
+                    pgec_replica:when_ready(
                       #{server_ref => Manager})),
 
-    {K, _V, _} = Existing = pick_one(ets:tab2list(Replica)),
-    ct:log("existing: ~p~n", [Existing]),
+    K = pick_one(
+          pgec_storage_sync:keys(
+            #{publication => Publication,
+              table => Table})),
+
+    ct:log("k: ~p~n", [K]),
 
     [{integer, 0}] = send_sync(
                        Config,
@@ -666,19 +726,23 @@ hkeys_test(Config) ->
     Manager = ?config(manager, Config),
     Table = ?config(table, Config),
     Schema = ?config(schema, Config),
-    Replica = ?config(replica, Config),
     Port = ?config(port, Config),
     Publication = ?config(publication, Config),
 
-    ct:log("schema: ~p,~ntable: ~p,~nreplica: ~p,~nport: ~p,~npublication: ~p~n",
-           [Schema, Table, Replica, Port, Publication]),
+    ct:log("schema: ~p,~ntable: ~p,~nport: ~p,~npublication: ~p~n",
+           [Schema, Table, Port, Publication]),
 
     {reply, ok} = gen_statem:receive_response(
-                    pgmp_rep_log_ets:when_ready(
+                    pgec_replica:when_ready(
                       #{server_ref => Manager})),
 
-    {K, _V, _} = Existing = pick_one(ets:tab2list(Replica)),
-    ct:log("existing: ~p~n", [Existing]),
+
+    K = pick_one(
+          pgec_storage_sync:keys(
+            #{publication => Publication,
+              table => Table})),
+
+    ct:log("k: ~p~n", [K]),
 
     [{array, []}] = send_sync(
                       Config,
@@ -729,19 +793,23 @@ hset_update_invalid_field_test(Config) ->
     Manager = ?config(manager, Config),
     Table = ?config(table, Config),
     Schema = ?config(schema, Config),
-    Replica = ?config(replica, Config),
     Port = ?config(port, Config),
     Publication = ?config(publication, Config),
 
-    ct:log("schema: ~p,~ntable: ~p,~nreplica: ~p,~nport: ~p,~npublication: ~p~n",
-           [Schema, Table, Replica, Port, Publication]),
+    ct:log("schema: ~p,~ntable: ~p,~nport: ~p,~npublication: ~p~n",
+           [Schema, Table, Port, Publication]),
 
     {reply, ok} = gen_statem:receive_response(
-                    pgmp_rep_log_ets:when_ready(
+                    pgec_replica:when_ready(
                       #{server_ref => Manager})),
 
-    {K, _, _} = Existing = pick_one(ets:tab2list(Replica)),
-    ct:log("existing: ~p~n", [Existing]),
+
+    K = pick_one(
+          pgec_storage_sync:keys(
+            #{publication => Publication,
+              table => Table})),
+
+    ct:log("k: ~p~n", [K]),
 
     V1 = alpha(5),
 
@@ -762,15 +830,14 @@ hset_insert_invalid_field_test(Config) ->
     Manager = ?config(manager, Config),
     Table = ?config(table, Config),
     Schema = ?config(schema, Config),
-    Replica = ?config(replica, Config),
     Port = ?config(port, Config),
     Publication = ?config(publication, Config),
 
-    ct:log("schema: ~p,~ntable: ~p,~nreplica: ~p,~nport: ~p,~npublication: ~p~n",
-           [Schema, Table, Replica, Port, Publication]),
+    ct:log("schema: ~p,~ntable: ~p,~nport: ~p,~npublication: ~p~n",
+           [Schema, Table, Port, Publication]),
 
     {reply, ok} = gen_statem:receive_response(
-                    pgmp_rep_log_ets:when_ready(
+                    pgec_replica:when_ready(
                       #{server_ref => Manager})),
 
 
@@ -798,18 +865,29 @@ hset_update_v_test(Config) ->
     Manager = ?config(manager, Config),
     Table = ?config(table, Config),
     Schema = ?config(schema, Config),
-    Replica = ?config(replica, Config),
     Port = ?config(port, Config),
     Publication = ?config(publication, Config),
 
-    ct:log("schema: ~p,~ntable: ~p,~nreplica: ~p,~nport: ~p,~npublication: ~p~n",
-           [Schema, Table, Replica, Port, Publication]),
+    ct:log("schema: ~p,~ntable: ~p,~nport: ~p,~npublication: ~p~n",
+           [Schema, Table, Port, Publication]),
 
     {reply, ok} = gen_statem:receive_response(
-                    pgmp_rep_log_ets:when_ready(
+                    pgec_replica:when_ready(
                       #{server_ref => Manager})),
 
-    {K, _, W} = Existing = pick_one(ets:tab2list(Replica)),
+
+    K = pick_one(
+          pgec_storage_sync:keys(
+            #{publication => Publication,
+              table => Table})),
+
+    ct:log("k: ~p~n", [K]),
+
+    {ok, {_, W} = Existing} = pgec_storage_sync:read(
+                     #{publication => Publication,
+                       table => Table,
+                       key => K}),
+
     ct:log("existing: ~p~n", [Existing]),
 
     V1 = alpha(5),
@@ -828,10 +906,13 @@ hset_update_v_test(Config) ->
            {bulk, V1}]})),
 
     wait_for(
-      [{K, V1, W}],
+      {ok, {V1, W}},
       fun
           () ->
-              ets:lookup(Replica, K)
+              pgec_storage_sync:read(
+                #{publication => Publication,
+                  table => Table,
+                  key => K})
       end),
 
     ?assertEqual(
@@ -853,18 +934,28 @@ hset_update_w_test(Config) ->
     Manager = ?config(manager, Config),
     Table = ?config(table, Config),
     Schema = ?config(schema, Config),
-    Replica = ?config(replica, Config),
     Port = ?config(port, Config),
     Publication = ?config(publication, Config),
 
-    ct:log("schema: ~p,~ntable: ~p,~nreplica: ~p,~nport: ~p,~npublication: ~p~n",
-           [Schema, Table, Replica, Port, Publication]),
+    ct:log("schema: ~p,~ntable: ~p,~nport: ~p,~npublication: ~p~n",
+           [Schema, Table, Port, Publication]),
 
     {reply, ok} = gen_statem:receive_response(
-                    pgmp_rep_log_ets:when_ready(
+                    pgec_replica:when_ready(
                       #{server_ref => Manager})),
 
-    {K, V, null} = Existing = pick_one(ets:tab2list(Replica)),
+    K = pick_one(
+          pgec_storage_sync:keys(
+            #{publication => Publication,
+              table => Table})),
+
+    ct:log("k: ~p~n", [K]),
+
+    {ok, {V, null} = Existing} = pgec_storage_sync:read(
+                                   #{publication => Publication,
+                                     table => Table,
+                                     key => K}),
+
     ct:log("existing: ~p~n", [Existing]),
 
     W1 = 12321,
@@ -883,10 +974,13 @@ hset_update_w_test(Config) ->
            {bulk, integer_to_list(W1)}]})),
 
     wait_for(
-      [{K, V, W1}],
+      {ok, {V, W1}},
       fun
           () ->
-              ets:lookup(Replica, K)
+              pgec_storage_sync:read(
+                #{publication => Publication,
+                  table => Table,
+                  key => K})
       end),
 
     ?assertEqual(
@@ -911,18 +1005,29 @@ hset_update_invalid_type_test(Config) ->
     Manager = ?config(manager, Config),
     Table = ?config(table, Config),
     Schema = ?config(schema, Config),
-    Replica = ?config(replica, Config),
     Port = ?config(port, Config),
     Publication = ?config(publication, Config),
 
-    ct:log("schema: ~p,~ntable: ~p,~nreplica: ~p,~nport: ~p,~npublication: ~p~n",
-           [Schema, Table, Replica, Port, Publication]),
+    ct:log("schema: ~p,~ntable: ~p,~nport: ~p,~npublication: ~p~n",
+           [Schema, Table, Port, Publication]),
 
     {reply, ok} = gen_statem:receive_response(
-                    pgmp_rep_log_ets:when_ready(
+                    pgec_replica:when_ready(
                       #{server_ref => Manager})),
 
-    {K, V, W} = Existing = pick_one(ets:tab2list(Replica)),
+
+    K = pick_one(
+          pgec_storage_sync:keys(
+            #{publication => Publication,
+              table => Table})),
+
+    ct:log("k: ~p~n", [K]),
+
+    {ok, {V, W} = Existing} = pgec_storage_sync:read(
+                                #{publication => Publication,
+                                  table => Table,
+                                  key => K}),
+
     ct:log("existing: ~p~n", [Existing]),
 
     W1 = alpha(5),
@@ -941,10 +1046,13 @@ hset_update_invalid_type_test(Config) ->
            {bulk, W1}]})),
 
     wait_for(
-      [{K, V, W}],
+      {ok, {V, W}},
       fun
           () ->
-              ets:lookup(Replica, K)
+              pgec_storage_sync:read(
+                #{publication => Publication,
+                  table => Table,
+                  key => K})
       end),
 
     ?assertEqual(
@@ -967,18 +1075,21 @@ hset_insert_test(Config) ->
     Manager = ?config(manager, Config),
     Table = ?config(table, Config),
     Schema = ?config(schema, Config),
-    Replica = ?config(replica, Config),
     Port = ?config(port, Config),
     Publication = ?config(publication, Config),
 
-    ct:log("schema: ~p,~ntable: ~p,~nreplica: ~p,~nport: ~p,~npublication: ~p~n",
-           [Schema, Table, Replica, Port, Publication]),
+    ct:log("schema: ~p,~ntable: ~p,~nport: ~p,~npublication: ~p~n",
+           [Schema, Table, Port, Publication]),
 
     {reply, ok} = gen_statem:receive_response(
-                    pgmp_rep_log_ets:when_ready(
+                    pgec_replica:when_ready(
                       #{server_ref => Manager})),
 
-    ct:log("~p~n", [lists:sort(ets:tab2list(Replica))]),
+    ct:log("~p~n",
+           [lists:sort(
+              pgec_storage_sync:keys(
+                #{publication => Publication,
+                  table => Table}))]),
 
     [{row_description, _},
      {data_row, [K]},
@@ -1002,10 +1113,13 @@ hset_insert_test(Config) ->
            {bulk, V}]})),
 
     wait_for(
-      [{K, V, null}],
+      {ok, {V, null}},
       fun
           () ->
-              ets:lookup(Replica, K)
+              pgec_storage_sync:read(
+                #{publication => Publication,
+                  table => Table,
+                  key => K})
       end),
 
     ?assertEqual(
@@ -1028,18 +1142,29 @@ replicate_update_test(Config) ->
     Manager = ?config(manager, Config),
     Table = ?config(table, Config),
     Schema = ?config(schema, Config),
-    Replica = ?config(replica, Config),
     Port = ?config(port, Config),
     Publication = ?config(publication, Config),
 
-    ct:log("schema: ~p,~ntable: ~p,~nreplica: ~p,~nport: ~p,~npublication: ~p~n",
-           [Schema, Table, Replica, Port, Publication]),
+    ct:log("schema: ~p,~ntable: ~p,~nport: ~p,~npublication: ~p~n",
+           [Schema, Table, Port, Publication]),
 
     {reply, ok} = gen_statem:receive_response(
-                    pgmp_rep_log_ets:when_ready(
+                    pgec_replica:when_ready(
                       #{server_ref => Manager})),
 
-    {K, _, W} = Existing = pick_one(ets:tab2list(Replica)),
+
+    K = pick_one(
+          pgec_storage_sync:keys(
+            #{publication => Publication,
+              table => Table})),
+
+    ct:log("k: ~p~n", [K]),
+
+    {ok, {_, W} = Existing} = pgec_storage_sync:read(
+                                #{publication => Publication,
+                                  table => Table,
+                                  key => K}),
+
     ct:log("existing: ~p~n", [Existing]),
 
     [{command_complete, 'begin'}] = pgmp_connection_sync:query(#{sql => "begin"}),
@@ -1064,9 +1189,12 @@ replicate_update_test(Config) ->
     [{command_complete, commit}] = pgmp_connection_sync:query(#{sql => "commit"}),
 
     wait_for(
-      [list_to_tuple(Updated)],
+      {ok, {V, W}},
       fun () ->
-              ets:lookup(Replica, K)
+              pgec_storage_sync:read(
+                #{publication => Publication,
+                  table => Table,
+                  key => K})
       end),
 
     [{array, _} = KV] = send_sync(
@@ -1085,14 +1213,25 @@ replicate_update_test(Config) ->
 replicate_delete_test(Config) ->
     Manager = ?config(manager, Config),
     Table = ?config(table, Config),
-    Replica = ?config(replica, Config),
     Publication = ?config(publication, Config),
 
     {reply, ok} = gen_statem:receive_response(
-                    pgmp_rep_log_ets:when_ready(
+                    pgec_replica:when_ready(
                       #{server_ref => Manager})),
 
-    {K, V, W} = Existing = pick_one(ets:tab2list(Replica)),
+
+    K = pick_one(
+          pgec_storage_sync:keys(
+            #{publication => Publication,
+              table => Table})),
+
+    ct:log("k: ~p~n", [K]),
+
+    {ok, {V, W} = Existing} = pgec_storage_sync:read(
+                                #{publication => Publication,
+                                  table => Table,
+                                  key => K}),
+
     ct:log("existing: ~p~n", [Existing]),
 
     [{command_complete, 'begin'}] = pgmp_connection_sync:query(#{sql => "begin"}),
@@ -1115,9 +1254,12 @@ replicate_delete_test(Config) ->
     [{command_complete, commit}] = pgmp_connection_sync:query(#{sql => "commit"}),
 
     wait_for(
-      [],
+      not_found,
       fun () ->
-              ets:lookup(Replica, K)
+              pgec_storage_sync:read(
+                #{publication => Publication,
+                  table => Table,
+                  key => K})
       end),
 
     [{array,[]}] = send_sync(
@@ -1132,11 +1274,10 @@ replicate_delete_test(Config) ->
 replicate_insert_test(Config) ->
     Manager = ?config(manager, Config),
     Table = ?config(table, Config),
-    Replica = ?config(replica, Config),
     Publication = ?config(publication, Config),
 
     {reply, ok} = gen_statem:receive_response(
-                    pgmp_rep_log_ets:when_ready(
+                    pgec_replica:when_ready(
                       #{server_ref => Manager})),
 
 
@@ -1151,7 +1292,7 @@ replicate_insert_test(Config) ->
                               #{args => [alpha(5)]}),
 
     [{row_description, _},
-     {data_row, [K, V, null] = Inserted},
+     {data_row, [K, V, null = W] = Inserted},
      {command_complete,
       {insert, 1}}] =  pgmp_connection_sync:execute(#{}),
 
@@ -1160,10 +1301,13 @@ replicate_insert_test(Config) ->
     [{command_complete, commit}] = pgmp_connection_sync:query(#{sql => "commit"}),
 
     wait_for(
-      [list_to_tuple(Inserted)],
+      {ok, {V, W}},
       fun
           () ->
-              ets:lookup(Replica, K)
+              pgec_storage_sync:read(
+                #{publication => Publication,
+                  table => Table,
+                  key => K})
       end),
 
     [{array, _} = KV] = send_sync(
@@ -1212,8 +1356,21 @@ wait_for(Expected, Check, N) ->
 end_per_suite(Config) ->
     Table = ?config(table, Config),
     C = ?config(client, Config),
+    Publication = ?config(publication, Config),
+    DB = ?config(db, Config),
 
     ok = gen_statem:stop(C),
+
+    ct:log(
+      "stop_replication: ~p~n",
+      [pgmp_db:stop_replication_on_publication(
+         DB,
+         Publication)]),
+
+    ct:log(
+      "drop_replication_slot: ~p~n",
+      [common:pbe(#{sql => "select pg_drop_replication_slot($1)",
+                    args => [pgmp_rep_log:slot_name(Publication)]})]),
 
     ct:log("~s: ~p~n",
            [Table,

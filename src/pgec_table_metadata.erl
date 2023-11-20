@@ -54,12 +54,12 @@ handle_event({call, _}, {notify, Notification}, ready, _) ->
     {keep_state_and_data, nei(get_members)};
 
 handle_event(internal, join, _, #{publication := Publication}) ->
-    pgec_pg:join([pgmp_rep_log_ets, Publication, notifications]),
+    pgec_pg:join([pgec_replica, Publication, notifications]),
     keep_state_and_data;
 
 handle_event(internal, get_members, _, #{publication := Publication}) ->
     {keep_state_and_data,
-     nei({get_members, pgec_pg:get_members([pgmp_rep_log_ets, Publication])})};
+     nei({get_members, pgec_pg:get_members([pgec_replica, Publication])})};
 
 handle_event(internal, {get_members, []}, _, _) ->
     {keep_state_and_data, pgec_statem:generic_timeout(no_members)};
@@ -123,9 +123,9 @@ handle_event(internal,
              _,
              #{requests := Requests} = Data) ->
     {keep_state,
-     Data#{requests := pgmp_rep_log_ets:F(A#{requests => Requests,
-                                             label => #{f => F,
-                                                        server_ref => ServerRef}})}};
+     Data#{requests := pgec_replica:F(A#{requests => Requests,
+                                         label => #{f => F,
+                                                    server_ref => ServerRef}})}};
 
 handle_event(info, Msg, _, #{requests := Existing} = Data) ->
     case gen_statem:check_response(Msg, Existing, true) of
@@ -140,7 +140,7 @@ handle_event(info, Msg, _, #{requests := Existing} = Data) ->
 
 
 terminate(_Reason, _State, #{publication := Publication}) ->
-    pgec_pg:leave([pgmp_rep_log_ets, Publication, notifications]);
+    pgec_pg:leave([pgec_replica, Publication, notifications]);
 
 terminate(_Reason, _State, _Data) ->
     ok.

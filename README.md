@@ -175,12 +175,6 @@ VALUE pub.grades.234-56-7890 0 120
 END
 ```
 
-To retrieve the whole table via the REST API:
-
-```shell
-curl -s http://localhost:8080/pub/grades | jq
-```
-
 Primary keys via REST API:
 
 ```shell

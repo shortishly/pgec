@@ -37,6 +37,7 @@ configuration() ->
 
 children() ->
     [worker(pgec_telemetry),
+     supervisor(pgec_storage_sup),
      worker(pgec_metadata) |
      lists:map(
        fun

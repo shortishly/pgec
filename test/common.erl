@@ -16,7 +16,11 @@
 -module(common).
 
 
+-feature(maybe_expr, enable).
+
+
 -export([all/1]).
+-export([pbe/1]).
 -export([stop_applications/0]).
 -include_lib("common_test/include/ct.hrl").
 
@@ -43,3 +47,11 @@ stop_applications([Application | Applications]) ->
 
 stop_applications([]) ->
     ok.
+
+
+pbe(#{sql := SQL, args := Parameters}) ->
+    maybe
+        [{parse_complete,[]}] ?= pgmp_connection_sync:parse(#{sql => SQL}),
+        [{bind_complete, []}] ?= pgmp_connection_sync:bind(#{args => Parameters}),
+        pgmp_connection_sync:execute(#{})
+    end.

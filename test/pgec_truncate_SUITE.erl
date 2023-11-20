@@ -1,4 +1,4 @@
-%% Copyright (c) 2023 Peter Morgan <peter.james.morgan@gmail.com>
+%% Copyright (c) 2022 Peter Morgan <peter.james.morgan@gmail.com>
 %%
 %% Licensed under the Apache License, Version 2.0 (the "License");
 %% you may not use this file except in compliance with the License.
@@ -13,7 +13,7 @@
 %% limitations under the License.
 
 
--module(pgec_resp_col_boolean_SUITE).
+-module(pgec_truncate_SUITE).
 
 
 -compile(export_all).
@@ -48,8 +48,6 @@ init_per_suite(Config) ->
     application:set_env(pgmp, mm_trace, false),
     application:set_env(pgmp, mm_log, true),
     application:set_env(pgmp, mm_log_n, 50),
-    application:set_env(pgmp, codec_jsonb, jsx),
-    application:set_env(pgmp, codec_json, jsx),
 
     application:set_env(pgmp, rep_log_trace, false),
     application:set_env(pgmp, rep_log_ets_trace, false),
@@ -65,33 +63,18 @@ init_per_suite(Config) ->
 
     application:set_env(mcd, protocol_callback, pgec_mcd_emulator),
     application:set_env(resp, protocol_callback, pgec_resp_emulator),
-    application:set_env(resp, listener_enabled, true),
 
     {ok, _} = pgec:start(),
 
     ct:log("pgmp logical replication name: ~p~n",
            [pgmp_config:replication(logical, publication_names)]),
 
-    logger:set_handler_config(
-      default,
-      #{formatter => {logger_formatter,
-                      #{template => [[logger_formatter, header],
-                                     {pid, [" ", pid, ""], ""},
-                                     {mfa, [" ", mfa, ":", line], ""},
-                                     "\n",
-                                     msg,
-                                     "\n"],
-                        legacy_header => true,
-                        single_line => false}}}),
-
-    logger:set_module_level(
-      [],
-      debug),
+    logger:set_module_level([], debug),
 
     [{command_complete,
       create_table}] = pgmp_connection_sync:query(
                          #{sql => io_lib:format(
-                                    "create table ~s (k uuid default gen_random_uuid() primary key, v boolean)",
+                                    "create table ~s (k serial primary key, v text)",
                                     [Table])}),
 
 
@@ -102,6 +85,27 @@ init_per_suite(Config) ->
                                           [Publication, Table])}),
 
     [{command_complete, 'begin'}] = pgmp_connection_sync:query(#{sql => "begin"}),
+
+
+    [{parse_complete, []}] = pgmp_connection_sync:parse(
+                               #{sql => io_lib:format(
+                                          "insert into ~s (v) values ($1) returning *",
+                                          [Table])}),
+
+    lists:map(
+      fun
+          (_) ->
+              [{bind_complete, []}] = pgmp_connection_sync:bind(
+                                        #{args => [alpha(5)]}),
+
+              [{row_description, _},
+               {data_row, Row},
+               {command_complete,
+                {insert, 1}}] =  pgmp_connection_sync:execute(#{}),
+
+              list_to_tuple(Row)
+      end,
+      lists:seq(1, 50)),
 
     Columns = [<<"pubname">>,
                <<"schemaname">>,
@@ -132,7 +136,6 @@ init_per_suite(Config) ->
                                                 pgmp_sup:get_child_pid(
                                                   pgmp_sup,
                                                   dbs_sup)),
-
     DB = pgmp_sup:get_child_pid(DbSup, db),
 
     {ok, LogRepSup} = pgmp_db:start_replication_on_publication(
@@ -155,19 +158,30 @@ init_per_suite(Config) ->
     ct:log("publication: ~p~n", [[pgec_replica, Publication]]),
     ct:log("get_members: ~p~n", [pgec_pg:get_members([pgec_replica, Publication])]),
 
-    {ok, Client} = resp_client:start(),
+
+    wait_for(false,
+             fun
+                 () ->
+                     pgec_storage_sync:keys(
+                       #{publication => Publication,
+                         table => Table}) == []
+             end,
+             5),
+
+    ct:log("keys: ~p~n",
+           [pgec_storage_sync:keys(
+              #{publication => Publication,
+                table => Table})]),
 
     [{manager, Manager},
      {db, DB},
      {publication, Publication},
      {schema, Schema},
      {table, Table},
-     {port, 8080},
-     {client, Client},
-     {replica, binary_to_atom(Table)} | Config].
+     {port, 8080} | Config].
 
 
-hset_insert_false_test(Config) ->
+truncate_test(Config) ->
     Manager = ?config(manager, Config),
     Table = ?config(table, Config),
     Schema = ?config(schema, Config),
@@ -181,121 +195,64 @@ hset_insert_false_test(Config) ->
                     pgec_replica:when_ready(
                       #{server_ref => Manager})),
 
-    ct:log("~p~n",
-           [lists:sort(pgec_storage_sync:keys(
-                         #{publication => Publication,
-                           table => Table}))]),
+    K = pick_one(
+          pgec_storage_sync:keys(
+            #{publication => Publication,
+              table => Table})),
 
-    [{row_description, _},
-     {data_row, [K]},
-     {command_complete, {select, 1}}] = pgmp_connection_sync:query(
-                                          #{sql => "select gen_random_uuid()"}),
-    V = false,
-    ct:log("k: ~p, v: ~p~n", [K, V]),
+    ct:log("k: ~p~n", [K]),
 
-    ?assertEqual(
-       [{integer, 1}],
-       send_sync(
-         Config,
-         {array,
-          [{bulk, "hset"},
-           {bulk,
-            lists:join(
-              ".",
-              [Publication, Table, K])},
-           {bulk, "v"},
-           {bulk, atom_to_binary(V)}]})),
+    {ok, Existing} = pgec_storage_sync:read(
+                       #{publication => Publication,
+                         table => Table,
+                         key => K}),
 
-    wait_for(
-      {ok, V},
-      fun
-          () ->
-              pgec_storage_sync:read(
-                #{publication => Publication,
-                  table => Table,
-                  key => K})
-      end),
+    ct:log("existing: ~p~n", [Existing]),
 
-    ?assertEqual(
-       [{array,
-         [{bulk, <<"v">>},
-          {bulk, atom_to_binary(V)},
-          {bulk, <<"k">>},
-          {bulk, K}]}],
-       send_sync(
-         Config,
-         {array,
-          [{bulk, "hgetall"},
-           {bulk,
-            lists:join(
-              ".",
-              [Publication, Table, K])}]})).
+    [{command_complete, 'begin'}] = pgmp_connection_sync:query(#{sql => "begin"}),
 
+    [{command_complete,
+      truncate_table}] = pgmp_connection_sync:query(
+                           #{sql => io_lib:format(
+                                      "truncate table ~s",
+                                      [Table])}),
 
-hset_insert_true_test(Config) ->
-    Manager = ?config(manager, Config),
-    Table = ?config(table, Config),
-    Schema = ?config(schema, Config),
-    Replica = ?config(replica, Config),
-    Port = ?config(port, Config),
-    Publication = ?config(publication, Config),
+    [{command_complete, commit}] = pgmp_connection_sync:query(#{sql => "commit"}),
 
-    ct:log("schema: ~p,~ntable: ~p,~nreplica: ~p,~nport: ~p,~npublication: ~p~n",
-           [Schema, Table, Replica, Port, Publication]),
+    wait_for([],
+             fun
+                 () ->
+                     pgec_storage_sync:keys(
+                       #{publication => Publication,
+                         table => Table})
+             end,
+             5),
 
-    {reply, ok} = gen_statem:receive_response(
-                    pgec_replica:when_ready(
-                      #{server_ref => Manager})),
+    URL = uri_string:recompose(
+            #{host => "localhost",
+              path => lists:join("/", [Publication, Table, integer_to_list(K)]),
+              port => Port,
+              scheme => "http"}),
 
-    ct:log("~p~n",
-           [lists:sort(pgec_storage_sync:keys(
-                         #{publication => Publication,
-                           table => Table}))]),
+    ct:log("~p~n", [URL]),
 
-    [{row_description, _},
-     {data_row, [K]},
-     {command_complete, {select, 1}}] = pgmp_connection_sync:query(
-                                          #{sql => "select gen_random_uuid()"}),
-    V = true,
-    ct:log("k: ~p, v: ~p~n", [K, V]),
+    {ok,
+     {{"HTTP/1.1", 404, "Not Found"},
+      [{"date", _},
+       {"server", "Cowboy"},
+       {"content-length", _},
+       {"content-type", "application/json"}],
+      JSON}} = httpc:request(
+                 get,
+                 {URL, []},
+                 [{timeout, 1_000}],
+              [{body_format, binary}]),
 
     ?assertEqual(
-       [{integer, 1}],
-       send_sync(
-         Config,
-         {array,
-          [{bulk, "hset"},
-           {bulk,
-            lists:join(
-              ".",
-              [Publication, Table, K])},
-           {bulk, "v"},
-           {bulk, atom_to_binary(V)}]})),
-
-    wait_for(
-      {ok, V},
-      fun
-          () ->
-              pgec_storage_sync:read(
-                #{publication => Publication,
-                  table => Table,
-                  key => K})
-      end),
-
-    ?assertEqual(
-       [{array,
-         [{bulk, <<"v">>},
-          {bulk, atom_to_binary(V)},
-          {bulk, <<"k">>},
-          {bulk, K}]}],
-       send_sync(
-         Config,
-         {array,
-          [{bulk, "hgetall"},
-           {bulk,
-            lists:join(
-              ".",
-              [Publication, Table, K])}]})).
+       #{<<"table">> => Table,
+         <<"keys">> => [integer_to_binary(K)],
+         <<"publication">> => Publication},
+       jsx:decode(JSON)).
 
 
 wait_for(Expected, Check) ->
@@ -330,11 +287,8 @@ wait_for(Expected, Check, N) ->
 
 end_per_suite(Config) ->
     Table = ?config(table, Config),
-    C = ?config(client, Config),
     Publication = ?config(publication, Config),
     DB = ?config(db, Config),
-
-    ok = gen_statem:stop(C),
 
     ct:log(
       "stop_replication: ~p~n",
@@ -363,6 +317,7 @@ alpha(N) ->
 
 
 pick_one(Pool) ->
+    ct:log("pool: ~p~n", [Pool]),
     [Victim] = pick(1, Pool),
     Victim.
 
@@ -378,23 +333,3 @@ pick(N, Pool, A) ->
     ?FUNCTION_NAME(N - 1,
                    Pool,
                    [lists:nth(rand:uniform(length(Pool)), Pool) | A]).
-
-
-send_sync(Config, Data) ->
-    Client = ?config(client, Config),
-    {reply, Reply} = gen_statem:receive_response(
-                       resp_client:send(
-                         #{server_ref => Client,
-                           data => Data})),
-    Reply.
-
-
-as_map({array, L}) ->
-    ?FUNCTION_NAME(L, #{}).
-
-
-as_map([{bulk, K}, {bulk, V} | T], A) ->
-    ?FUNCTION_NAME(T, A#{K => V});
-
-as_map([], A) ->
-    A.

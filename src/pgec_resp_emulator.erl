@@ -18,6 +18,8 @@
 
 -export([info/1]).
 -export([init/1]).
+-export([lookup/1]).
+-export([ptk/1]).
 -export([recv/1]).
 -import(pgmp_connection_sync, [bind/1]).
 -import(pgmp_connection_sync, [execute/1]).
@@ -156,13 +158,17 @@ recv(#{command := #{name := hset},
     try lookup(PTK) of
         {ok, #{metadata := _Metadata}} ->
             [{_, Metadata}] = metadata(PTK),
-            try pbe(update(Metadata, names(Metadata, NameValues)),
-                     pgec_kv:keys(
-                       Metadata,
-                       string:split(
-                         Encoded,
-                         "/",
-                         all)) ++ values(Metadata, NameValues)) of
+            try pbe(update(
+                      maps:merge(
+                        Metadata,
+                        PTK),
+                      names(Metadata, NameValues)),
+                    pgec_kv:keys(
+                      Metadata,
+                      string:split(
+                        Encoded,
+                        "/",
+                        all)) ++ values(Metadata, NameValues)) of
 
                 {ok, Changed} ->
                     {continue,
@@ -187,7 +193,7 @@ recv(#{command := #{name := hset},
         not_found ->
             [{_, Metadata}] = metadata(PTK),
 
-            try pbe(insert(Metadata, names(Metadata, NameValues)),
+            try pbe(insert(maps:merge(PTK, Metadata), names(Metadata, NameValues)),
                     pgec_kv:keys(
                       Metadata,
                       string:split(
@@ -234,7 +240,10 @@ recv(#{command := #{name := del},
                          [{_, Metadata}] = metadata(PTK),
 
                          [{parse_complete, []}] = parse(
-                                                    #{sql => delete(Metadata)}),
+                                                    #{sql => delete(
+                                                               maps:merge(
+                                                                 PTK,
+                                                                 Metadata))}),
 
                          [{bind_complete, []}] = bind(
                                                    #{args => pgec_kv:keys(
@@ -396,7 +405,7 @@ recv(#{command := #{name := psubscribe},
     [_, PTK] = string:split(Pattern, ":"),
     try ptk(PTK) of
         #{publication := Publication, table := Table} ->
-            pgec_pg:join(#{m => pgmp_rep_log_ets,
+            pgec_pg:join(#{m => pgec_replica,
                            publication => Publication,
                            name => Table}),
             {continue,
@@ -460,23 +469,30 @@ lookup(PTK) ->
 
 
 lookup(Metadata, PTK) ->
-    ?LOG_DEBUG(#{metadata => Metadata, ptk => PTK}),
-     ets:lookup(table(Metadata, PTK), key(Metadata, PTK)).
+    Key = key(Metadata, PTK),
+    ?LOG_DEBUG(#{metadata => Metadata, ptk => PTK, key => Key}),
+    case pgec_storage_sync:read(PTK#{key := Key}) of
+        {ok, Value} ->
+            [pgec_storage_common:row(Key, Value, Metadata)];
 
-
-table(#{table := Table} = Metadata, PTK) ->
-    ?LOG_DEBUG(#{metadata => Metadata, ptk => PTK}),
-    Table.
-
+        not_found ->
+            []
+    end.
 
 key(Metadata, #{key := Encoded} = PTK) ->
     ?LOG_DEBUG(#{metadata => Metadata, ptk => PTK}),
     pgec_kv:key(Metadata, string:split(Encoded, "/", all)).
 
 
-metadata(#{publication := _, table := _} = Arg) ->
+metadata(#{publication := Publication, table := Table} = Arg) ->
     ?LOG_DEBUG(#{arg => Arg}),
-    pgec_metadata:lookup(Arg).
+    case pgec_storage_sync:metadata(Arg) of
+        {ok, Metdata} ->
+            [{{Publication, Table}, Metdata}];
+
+        not_found ->
+            []
+    end.
 
 
 ptk(PTK) ->
@@ -517,12 +533,12 @@ action(update) ->
 
 update(#{keys := Positions,
          columns := Columns,
-         namespace := Namespace,
+         schema := Schema,
          table := Table},
        Names) ->
     [io_lib:format(
        "update ~s.~s set ",
-       [Namespace, Table]),
+       [Schema, Table]),
 
      lists:join(
        ", ",
@@ -556,12 +572,13 @@ update(#{keys := Positions,
 
 insert(#{keys := Positions,
          columns := Columns,
-         namespace := Namespace,
-         table := Table},
+         schema := Schema,
+         table := Table} = Arg,
        Names) ->
+    ?LOG_DEBUG(#{arg => Arg, names => Names}),
     [io_lib:format(
        "insert into ~s.~s (",
-       [Namespace, Table]),
+       [Schema, Table]),
 
      lists:join(
        ", ",
@@ -588,8 +605,20 @@ names(_, []) ->
     [].
 
 
-values(Metadata, NameValues) ->
-    ?FUNCTION_NAME(Metadata, NameValues, []).
+values(#{columns := Columns, oids := OIDs} = Metadata, NameValues) ->
+    Types = pgmp_types:cache(pgec_util:db()),
+    ?FUNCTION_NAME(
+       Metadata#{coids => maps:map(
+                            fun
+                                (_, OID) ->
+                                    maps:get(OID, Types)
+                            end,
+                            maps:from_list(
+                              lists:zip(
+                                Columns,
+                                OIDs)))},
+       NameValues,
+       []).
 
 
 values(#{coids := COIDs} = Metadata,
@@ -650,11 +679,12 @@ decode(Type, Value) ->
 
 delete(#{keys := Positions,
          columns := Columns,
-         namespace := Namespace,
-         table := Table}) ->
+         schema := Schema,
+         table := Table} = Arg) ->
+    ?LOG_DEBUG(#{arg => Arg}),
     [io_lib:format(
        "delete from ~s.~s where ",
-       [Namespace, Table]),
+       [Schema, Table]),
      lists:join(
        " and ",
        lists:map(

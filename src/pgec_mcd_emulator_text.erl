@@ -75,13 +75,15 @@ lookup(PTK) ->
 
 
 lookup(Metadata, PTK) ->
-    ?LOG_DEBUG(#{metadata => Metadata, ptk => PTK}),
-     ets:lookup(table(Metadata, PTK), key(Metadata, PTK)).
+    Key = key(Metadata, PTK),
+    ?LOG_DEBUG(#{metadata => Metadata, ptk => PTK, key => Key}),
+    case pgec_storage_sync:read(PTK#{key := Key}) of
+        {ok, Value} ->
+            [pgec_storage_common:row(Key, Value, Metadata)];
 
-
-table(Metadata, #{table := Table} = PTK) ->
-    ?LOG_DEBUG(#{metadata => Metadata, ptk => PTK}),
-    binary_to_existing_atom(Table).
+        not_found ->
+            []
+    end.
 
 
 key(Metadata, #{key := Encoded} = PTK) ->
@@ -91,7 +93,13 @@ key(Metadata, #{key := Encoded} = PTK) ->
 
 metadata(#{publication := Publication, table := Table} = Arg) ->
     ?LOG_DEBUG(#{arg => Arg}),
-    ets:lookup(pgec_metadata, {Publication, Table}).
+    case pgec_storage_sync:metadata(Arg) of
+        {ok, Metdata} ->
+            [{{Publication, Table}, Metdata}];
+
+        not_found ->
+            []
+    end.
 
 
 ptk(PTK) ->

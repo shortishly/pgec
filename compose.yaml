@@ -2,7 +2,7 @@
 services:
   grafana:
     image:
-      grafana/grafana:${GRAFANA_VERSION:-9.3.6}
+      grafana/grafana:${GRAFANA_VERSION:-10.1.5}
     ports:
       - 3000:3000
     environment:
@@ -22,12 +22,9 @@ services:
       - grafana:/var/lib/grafana
     pull_policy:
       ${PULL_POLICY:-missing}
-    profiles:
-      - monitoring
-      - all
   prometheus:
     image:
-      prom/prometheus:${PROMETHEUS_VERSION:-v2.42.0}
+      prom/prometheus:${PROMETHEUS_VERSION:-v2.47.2}
     ports:
       - 9090:9090
     configs:
@@ -35,12 +32,9 @@ services:
         target: /etc/prometheus/prometheus.yml
     pull_policy:
       ${PULL_POLICY:-missing}
-    profiles:
-      - monitoring
-      - all
-  postgres:
+  db:
     image:
-      ${POSTGRES_IMAGE:-postgres:${POSTGRES_VERSION:-15}}
+      ${POSTGRES_IMAGE:-postgres:${POSTGRES_VERSION:-16.1}}
     environment:
       PGUSER: postgres
       POSTGRES_PASSWORD: postgres
@@ -50,12 +44,8 @@ services:
       - 5432:5432
     volumes:
       - db:/var/lib/postgresql/data
-      - type: bind
-        source: example/initdb.d/
-        target: /docker-entrypoint-initdb.d/
-      - type: bind
-        source: example/data
-        target: /mnt
+      - ./example/initdb.d/:/docker-entrypoint-initdb.d/
+      - ./example/data:/mnt
     healthcheck:
       test: /usr/bin/pg_isready
       interval: 5s
@@ -63,12 +53,9 @@ services:
       retries: 5
     pull_policy:
       ${PULL_POLICY:-missing}
-    profiles:
-      - db
-      - all
   load-generator:
     image:
-      postgres:${POSTGRES_VERSION:-15}
+      postgres:${POSTGRES_VERSION:-16}
     environment:
       PGPASSWORD: postgres
     command:
@@ -78,12 +65,9 @@ services:
         source: example/randload
         target: /bin/randload
     links:
-      - postgres
+      - db
     pull_policy:
       ${PULL_POLICY:-missing}
-    profiles:
-      - db
-      - all
   pgec:
     image:
       ${PGEC_IMAGE:-ghcr.io/shortishly/pgec:${PGEC_VERSION:-latest}}
@@ -99,12 +83,9 @@ services:
       - 9100:9100
       - 11211:11211
     links:
-      - postgres
+      - db
     pull_policy:
       ${PULL_POLICY:-always}
-    profiles:
-      - cache
-      - all
 configs:
   prometheus_yml:
     file: example/prometheus.yml

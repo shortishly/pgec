@@ -34,6 +34,7 @@ recv(#{message := #{meta := _}}) ->
     stop;
 
 recv(#{message := #{command := _}} = Arg) ->
+    ?LOG_DEBUG(#{arg => Arg}),
     pgec_mcd_emulator_text:recv(Arg).
 
 
