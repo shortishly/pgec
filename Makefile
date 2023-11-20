@@ -55,6 +55,7 @@ dep_cowboy_commit = 2.10.0
 dep_cowboy_telemetry_commit = v0.4.0
 dep_jsx_commit = v3.1.0
 dep_metrics_commit = 0.2.0
+dep_pgmp_commit = develop
 
 
 PLT_APPS += any

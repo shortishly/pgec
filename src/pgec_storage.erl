@@ -35,9 +35,9 @@
 -import(pgec_storage_common, [pt/1]).
 -import(pgec_storage_common, [value/2]).
 -import(pgmp_statem, [send_request/1]).
+-include("pgec_storage.hrl").
 -include_lib("kernel/include/logger.hrl").
 -include_lib("leveled/include/leveled.hrl").
-
 
 start_link() ->
     gen_statem:start({local, ?MODULE}, ?MODULE, [], []).
@@ -174,6 +174,7 @@ init([]) ->
     {ok,
      ready,
      #{requests => gen_server:reqids_new(),
+       cache => ets:new(cache, [{keypos, 2}]),
        mappings => ets:new(?MODULE, [protected])},
      nei(leveled)}.
 
@@ -220,9 +221,9 @@ handle_event({call, From},
              _,
              _) ->
     {keep_state_and_data,
-     nei({get,
-          #{from => From,
-            bucket => bucket(Detail),
+     nei({cache_read,
+          #{bucket => bucket(Detail),
+            from => From,
             key => Key}})};
 
 handle_event({call, From},
@@ -247,7 +248,7 @@ handle_event({call, From},
              _,
              _) ->
     {keep_state_and_data,
-     nei({get,
+     nei({cache_read,
           #{from => From,
             bucket => <<"pgec/mapping">>,
             key => pt(Metadata)}})};
@@ -280,12 +281,13 @@ handle_event({call, From},
               postpone]};
 
         [{_, Mapping}] ->
-            {keep_state_and_data,
-             nei({put,
-                  #{from => From,
-                    bucket => bucket(Detail),
+            BKV = #{bucket => bucket(Detail),
                     key => key(Row, Mapping),
-                    value => value(Row, Mapping)}})}
+                    value => value(Row, Mapping)},
+
+            {keep_state_and_data,
+             [nei({cache_write, BKV}),
+              nei({put, BKV#{from => From}})]}
     end;
 
 handle_event({call, From},
@@ -304,11 +306,11 @@ handle_event({call, From},
               postpone]};
 
         [{_, Mapping}] ->
+            BK = #{bucket => bucket(Detail),
+                   key => key(Row, Mapping)},
             {keep_state_and_data,
-             nei({delete,
-                  #{from => From,
-                    bucket => bucket(Detail),
-                    key => key(Row, Mapping)}})}
+             [nei({cache_delete, BK}),
+              nei({delete, BK#{from => From}})]}
     end;
 
 handle_event({call, From},

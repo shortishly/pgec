@@ -20,6 +20,7 @@
 -export([handle_event/4]).
 -import(pgec_statem, [nei/1]).
 -import(pgec_storage_common, [pt/1]).
+-include("pgec_storage.hrl").
 -include_lib("kernel/include/logger.hrl").
 
 

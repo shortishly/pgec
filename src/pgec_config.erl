@@ -51,6 +51,12 @@ timeout(no_members = Name) ->
            names => [Name, timeout],
            default => timer:seconds(1)});
 
+timeout(expiry = Name) ->
+    envy(#{caller => ?MODULE,
+           type => integer_or_atom,
+           names => [Name, timeout],
+           default => timer:minutes(5)});
+
 timeout(Name) ->
     envy(#{caller => ?MODULE,
            type => integer_or_atom,

@@ -24,6 +24,7 @@
 -export([row/3]).
 -export([value/2]).
 -import(pgec_statem, [nei/1]).
+-include("pgec_storage.hrl").
 -include_lib("kernel/include/logger.hrl").
 -include_lib("leveled/include/leveled.hrl").
 
@@ -62,7 +63,8 @@ handle_event(internal,
              _,
              _) ->
     {keep_state_and_data,
-     [nei({storage,
+     [nei({cache_delete, Detail}),
+      nei({storage,
            #{request => {put,
                          Bucket,
                          term_to_binary(Key),
@@ -146,6 +148,118 @@ handle_event(info, Msg, _, #{requests := Existing} = Data) ->
         {{error, {Reason, _}}, _, UpdatedRequests} ->
             {stop, Reason, Data#{requests := UpdatedRequests}}
     end;
+
+handle_event(internal,
+             {cache_read,
+              #{bucket := Bucket,
+                from := From,
+                key := Key}},
+             _,
+             #{cache := Cache}) ->
+    case ets:lookup(Cache, {Bucket, Key}) of
+        [] ->
+            {keep_state_and_data,
+             [nei({telemetry,
+                   cache,
+                   #{count => 1},
+                   #{action => miss, bucket => Bucket}}),
+              nei({get, #{from => From, bucket => Bucket, key => Key}})]};
+
+        [#entry{value = Value}] ->
+            {keep_state_and_data,
+             [{reply, From, {ok, Value}},
+              nei({telemetry,
+                   cache,
+                   #{count => 1},
+                   #{action => hit, bucket => Bucket}}),
+              {{timeout, {Bucket, Key}},
+               pgec_config:timeout(expiry),
+               expired}]}
+    end;
+
+handle_event(internal,
+             {cache_write,
+              #{bucket := Bucket,
+                key := Key,
+                value := Value}},
+              _,
+              #{cache := Cache}) ->
+    case ets:update_element(
+           Cache,
+           {Bucket, Key},
+           {#entry.value,  Value}) of
+
+        true ->
+            {keep_state_and_data,
+             [nei({telemetry,
+                   cache,
+                   #{count => 1},
+                   #{action => update,
+                     bucket => Bucket}}),
+              {{timeout, {Bucket, Key}},
+               pgec_config:timeout(expiry),
+               expired}]};
+
+        false ->
+            true = ets:insert_new(
+                     Cache,
+                     #entry{key = {Bucket, Key}, value = Value}),
+
+            {keep_state_and_data,
+             [nei({telemetry,
+                   cache,
+                   #{count => 1},
+                   #{action => insert,
+                     bucket => Bucket}}),
+              {{timeout, {Bucket, Key}},
+               pgec_config:timeout(expiry),
+               expired}]}
+    end;
+
+handle_event(internal,
+             {cache_delete,
+              #{bucket := Bucket,
+                key := Key}},
+             _,
+             #{cache := Cache}) ->
+    ets:delete(Cache, {Bucket, Key}),
+    {keep_state_and_data,
+     [nei({telemetry,
+           cache,
+           #{count => 1},
+           #{action => delete,
+             bucket => Bucket}}),
+      {{timeout, {Bucket, Key}}, infinity, cancelled}]};
+
+handle_event({timeout, {Bucket, _} = Key}, expired, _, #{cache := Cache}) ->
+    ets:delete(Cache, Key),
+    {keep_state_and_data,
+     nei({telemetry,
+          cache,
+          #{count => 1},
+          #{action => expired,
+            bucket => Bucket}})};
+
+handle_event(
+  internal,
+  {response,
+   #{reply := {ok, Value} = Reply,
+     label := #{action := get = Action,
+                bucket := Bucket,
+                key := Key,
+                from := From}}},
+  _,
+  _) ->
+    {keep_state_and_data,
+     [{reply, From, Reply},
+      nei({telemetry,
+           Action,
+           #{count => 1},
+           #{bucket => Bucket}}),
+      nei({cache_write,
+           #{bucket => Bucket,
+             key => Key,
+             value => Value}})]};
 
 handle_event(internal,
              {response,
