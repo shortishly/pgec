@@ -154,7 +154,6 @@ jobs:
       - uses: actions/checkout@v4
       - run: >-
           docker compose
-          --profile all
           up
           --detach
           --remove-orphans
