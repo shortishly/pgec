@@ -163,8 +163,7 @@ jobs:
           PGEC_VERSION: ${{needs.package.outputs.tags}}
       - run: |
           sudo apt-get update
-          sudo apt-get install -y redis-tools netcat netcat-traditional bats
-          sudo update-alternatives --set nc /bin/nc.traditional
+          sudo apt-get install -y redis-tools socat bats
       - run: |
           sleep 60
       - run: |
