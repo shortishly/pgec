@@ -37,16 +37,7 @@ configuration() ->
 
 children() ->
     [worker(pgec_telemetry),
-     supervisor(pgec_storage_sup),
-     worker(pgec_metadata) |
-     lists:map(
-       fun
-           (Publication) ->
-               worker(#{id => Publication,
-                        m => pgec_table_metadata,
-                        args => [#{publication => Publication}]})
-       end,
-       pgmp_config:replication(logical, publication_names))].
+     supervisor(pgec_storage_sup)].
 
 
 worker(Arg) ->
