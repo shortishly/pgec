@@ -47,15 +47,22 @@ handle_event(internal,
              {waiting_for,
               #{key := Key,
                 bucket := Bucket}} = State,
-             #{mappings := Mappings} = Data) ->
+             #{previous := {ready, _} = Previous,
+               mappings := Mappings} = Data) ->
     ?LOG_DEBUG(#{event_content => EventContent,
                  state => State,
                  data => Data}),
     ets:insert(Mappings, {Key, Value}),
     {next_state,
-     ready,
-     Data,
+     Previous,
+     maps:without([previous], Data),
      pop_callback_module};
+
+handle_event(internal,
+             {response, #{reply := not_found}},
+             {waiting_for, _},
+             _) ->
+    {stop, not_found};
 
 handle_event(EventType, EventContent, State, Data) ->
     pgec_storage_common:handle_event(EventType,

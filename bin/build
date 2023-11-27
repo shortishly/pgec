@@ -33,9 +33,11 @@ fi
 
 
 docker build \
+       --no-cache \
+       --pull \
        --file "$bdra/Dockerfile" \
        --progress plain \
-       --tag "$(gh repo view --json name --jq .name):latest" \
+       --tag "ghcr.io/$(gh repo view --json nameWithOwner --jq .nameWithOwner)" \
        --build-arg BUILD_IMAGE=erlang:26.1 \
        --build-arg GITHUB_REPOSITORY="$(gh repo view --json nameWithOwner --jq .nameWithOwner)" \
        --build-arg BUILD_COMMAND=make \

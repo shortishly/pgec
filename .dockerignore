@@ -1,3 +1,5 @@
-_rel
-deps
-
+/_rel
+/deps
+/ebin
+/data
+/pgec.d

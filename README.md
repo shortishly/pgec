@@ -20,10 +20,24 @@
 
 # PostgreSQL Edge Cache (PGEC)
 
-pgec is an Apache licensed real-time in memory PostgreSQL logical
-replication cache with Redis, Memcached and REST APIs. It supports
-column lists and row filters with the latest features of replication
-in PostgreSQL 15.
+pgec replicates data from PostgreSQL accessed with a Redis, Memcached
+and REST API with persistent storage.
+
+## Features
+
+- PostgreSQL [logical replication support][pgmp] for [cache
+  consistency][shortishly-ccwsr]
+- In memory cache with expiry, backed by a persistent store using
+  [leveled][github-martinsumner-leveled] (from
+  [riak][github-basho-riak]).
+- [Redis compatible API](docs/resp.md)
+- [Memcached compatible API][mcd]
+- REST API
+- a [compose](docs/compose.md) having PostgreSQL with example data,
+  [Grafana][grafana], and [Prometheus][prometheus-io].
+- a [GitHub Codespace](docs/codespaces.md) for build and development
+- Support for [row filters and column lists][shortishly-pgec] in
+  PostgreSQL 15
 
 ![High Level Architecture](pgec-hla-2023-03-08.svg)
 
@@ -35,19 +49,6 @@ replication continues keeping [pgec][shortishly-pgec] up to date in
 real-time.
 
 ![main](https://github.com/shortishly/pgmp/actions/workflows/main.yml/badge.svg)
-
-## Features
-
-- PostgreSQL [logical replication support][pgmp] for [cache
-  consistency][shortishly-ccwsr]
-- [Redis compatible API](docs/resp.md)
-- [Memcached compatible API][mcd]
-- REST API
-- a [compose](docs/compose.md) having PostgreSQL with example data,
-  [Grafana][grafana], and [Prometheus][prometheus-io].
-- a [GitHub Codespace](docs/codespaces.md) for build and development
-- Support for [row filters and column lists][shortishly-pgec] in
-  PostgreSQL 15
 
 ## Quick Start
 
@@ -76,7 +77,7 @@ cd pgec
 Start up everything with:
 
 ```shell
-docker compose --profile all up --detach --remove-orphans
+docker compose up --detach --remove-orphans
 ```
 
 Sample data is populated from the scripts in [this
@@ -225,6 +226,8 @@ curl -s http://localhost:8080/pub/cities/Tulsa/OK | jq
 
 [cli-github-com]: https://cli.github.com
 [docker-com-get-docker]: https://docs.docker.com/get-docker/
+[github-basho-riak]: https://github.com/basho/riak
+[github-martinsumner-leveled]: https://github.com/martinsumner/leveled
 [grafana]: https://grafana.com/
 [mcd]: https://github.com/shortishly/mcd
 [pgmp]: https://github.com/shortishly/pgmp

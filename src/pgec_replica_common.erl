@@ -115,7 +115,8 @@ handle_event(internal, storage, _, #{monitors := Monitors} = Data) ->
              Data#{storage => Storage,
                    monitors := Monitors#{Storage => erlang:monitor(
                                                       process,
-                                                      Storage)}}};
+                                                      Storage)}},
+             nei(available)};
 
         {_, _, _, _} = Reason ->
             {stop, Reason};
@@ -123,6 +124,17 @@ handle_event(internal, storage, _, #{monitors := Monitors} = Data) ->
         false ->
             {stop, no_storage}
     end;
+
+handle_event(internal,
+             available,
+             _,
+             #{config := #{publication := Publication}}) ->
+    %% inform storage that this publication is available, but not
+    %% ready yet.
+    {keep_state_and_data,
+     nei({storage_request,
+          #{action => available,
+            publication => Publication}})};
 
 handle_event(internal,
              {response,
@@ -140,6 +152,8 @@ handle_event(internal,
              _) when Action == table_map;
                      Action == delete;
                      Action == truncate;
+                     Action == ready;
+                     Action == available;
                      Action == position_update;
                      Action == write ->
     {keep_state_and_data,

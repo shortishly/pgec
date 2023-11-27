@@ -77,6 +77,7 @@ services:
       PGMP_DATABASE_USER: postgres
       PGMP_REPLICATION_LOGICAL_PUBLICATION_NAMES: pub
       PGMP_SOCKET_TRACE: false
+      METRICS_COLLECT_TIMEOUT: 5000
     ports:
       - 8080:80
       - 6379:6379

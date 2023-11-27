@@ -36,7 +36,7 @@ handle_event(internal, {relation, _} = Label, _, _) ->
      nei({parse,
           #{label => Label,
              sql => <<"select * from pg_catalog.pg_publication_tables "
-                     "where pubname = $1 and schemaname = $2 and tablename = $3">>}})};
+                      "where pubname = $1 and schemaname = $2 and tablename = $3">>}})};
 
 handle_event(internal,
              {response,
@@ -59,6 +59,18 @@ handle_event(internal,
      unready,
      Data,
      nei({execute, #{label => Label}})};
+
+
+handle_event(internal,
+             {response,
+              #{label := {relation, #{namespace := Namespace, name := Name}},
+                reply := [{command_complete, {select, 0}}]}},
+             execute,
+             #{metadata := Metadata} = Data) ->
+    {next_state,
+     ready,
+     Data#{metadata := metadata({Namespace, Name}, state, dropped, Metadata)},
+     pop_callback_module};
 
 handle_event(internal,
              {response, #{label := {relation, _},

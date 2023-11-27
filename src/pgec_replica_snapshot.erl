@@ -50,7 +50,8 @@ handle_event(internal = EventType,
 handle_event(internal = EventType,
              {response, #{reply := [{command_complete, commit}]}} = EventContent,
              State,
-             #{stream := Stream} = Data) ->
+             #{config := #{publication := Publication},
+               stream := Stream} = Data) ->
     ?LOG_DEBUG(#{event_type => EventType,
                  event_content => EventContent,
                  state => State,
@@ -59,11 +60,20 @@ handle_event(internal = EventType,
      ready,
      maps:without([stream], Data),
      [pop_callback_module,
+
+      %% this reply will start streaming replication with pgmp.
       {reply, Stream, ok},
+
       nei({notify,
            #{action => progress,
              status => completed,
-             activity => ?MODULE}})]};
+             activity => ?MODULE}}),
+
+      %% inform storage that the publication is now ready, enabling
+      %% read requests.
+      nei({storage_request,
+           #{action => ready,
+             publication => Publication}})]};
 
 handle_event(internal = EventType,
              {response,

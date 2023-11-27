@@ -16,6 +16,7 @@
 -module(pgec_storage).
 
 
+-export([available/1]).
 -export([callback_mode/0]).
 -export([delete/1]).
 -export([handle_event/4]).
@@ -25,6 +26,7 @@
 -export([position/1]).
 -export([position_update/1]).
 -export([read/1]).
+-export([ready/1]).
 -export([start_link/0]).
 -export([table_map/1]).
 -export([truncate/1]).
@@ -39,8 +41,13 @@
 -include_lib("kernel/include/logger.hrl").
 -include_lib("leveled/include/leveled.hrl").
 
+
 start_link() ->
-    gen_statem:start({local, ?MODULE}, ?MODULE, [], []).
+    gen_statem:start_link(
+      {local, ?MODULE},
+      ?MODULE,
+      [],
+      envy_gen:options(?MODULE)).
 
 
 keys(Arg) ->
@@ -79,6 +86,14 @@ metadata(Arg) ->
     send_request(Arg, ?FUNCTION_NAME).
 
 
+ready(Arg) ->
+    send_request(Arg, ?FUNCTION_NAME).
+
+
+available(Arg) ->
+    send_request(Arg, ?FUNCTION_NAME).
+
+
 send_request(Arg, Action) ->
     ?FUNCTION_NAME(Arg, Action, config(Action)).
 
@@ -93,10 +108,11 @@ send_request(Arg, Action, Config) ->
 config(keys) ->
     [publication,
      table,
-     {folder, fun
-                  (_Bucket, Key, A) ->
-                      [Key | A]
-              end},
+     {folder,
+      fun
+          (_Bucket, Key, A) ->
+              [Key | A]
+      end},
      {accumulator, []}];
 
 config(position_update) ->
@@ -121,7 +137,9 @@ config(table_map) ->
      columns,
      oids];
 
-config(position) ->
+config(Action) when Action == position;
+                    Action == available;
+                    Action == ready ->
     [publication].
 
 
@@ -172,9 +190,10 @@ callback_mode() ->
 init([]) ->
     process_flag(trap_exit, true),
     {ok,
-     ready,
+     {ready, ordsets:new()},
      #{requests => gen_server:reqids_new(),
        cache => ets:new(cache, [{keypos, 2}]),
+       available => ordsets:new(),
        mappings => ets:new(?MODULE, [protected])},
      nei(leveled)}.
 
@@ -216,15 +235,55 @@ handle_event({call, From},
 
 handle_event({call, From},
              {request,
-              #{action := read,
+              #{action := ready = Action,
+                publication := Publication}},
+             {ready, Ready},
+             Data) ->
+    ?LOG_INFO(#{Action => Publication}),
+    {next_state,
+     {ready, ordsets:add_element(Publication, Ready)},
+     Data,
+     {reply, From, ok}};
+
+handle_event({call, From},
+             {request,
+              #{action := available = Action,
+                publication := Publication}},
+             {ready, _},
+             #{available := Available} = Data) ->
+    ?LOG_INFO(#{Action => Publication}),
+    {keep_state,
+     Data#{available := ordsets:add_element(Publication, Available)},
+     {reply, From, ok}};
+
+handle_event({call, From},
+             {request,
+              #{action := read = Action,
+                publication := Publication,
                 key := Key} = Detail},
-             _,
-             _) ->
-    {keep_state_and_data,
-     nei({cache_read,
-          #{bucket => bucket(Detail),
-            from => From,
-            key => Key}})};
+             {ready, Ready},
+             #{available := Available}) ->
+
+    ?LOG_DEBUG(#{Action => Publication,
+                 ready => Ready}),
+
+    case ordsets:is_element(Publication, Ready) of
+        true ->
+            {keep_state_and_data,
+             nei({cache_read,
+                  #{bucket => bucket(Detail),
+                    from => From,
+                    key => Key}})};
+
+        false ->
+            case ordsets:is_element(Publication, Available) of
+                true ->
+                    {keep_state_and_data, postpone};
+
+                false ->
+                    {keep_state_and_data, {reply, From, not_found}}
+            end
+    end;
 
 handle_event({call, From},
              {request,
@@ -244,23 +303,42 @@ handle_event({call, From},
 
 handle_event({call, From},
              {request,
-              #{action := metadata} = Metadata},
-             _,
-             _) ->
-    {keep_state_and_data,
-     nei({cache_read,
-          #{from => From,
-            bucket => <<"pgec/mapping">>,
-            key => pt(Metadata)}})};
+              #{action := metadata = Action,
+                publication := Publication} = Metadata},
+             {ready, Ready},
+             #{available := Available}) ->
+
+    ?LOG_DEBUG(#{Action => Metadata, ready => Ready}),
+
+    case ordsets:is_element(Publication, Ready) of
+        true ->
+            {keep_state_and_data,
+             nei({cache_read,
+                  #{from => From,
+                    bucket => <<"pgec/mapping">>,
+                    key => pt(Metadata)}})};
+
+        false ->
+            case ordsets:is_element(Publication, Available) of
+                true ->
+                    %% we know about this publication, but it is not
+                    %% ready yet.
+                    {keep_state_and_data, postpone};
+
+                false ->
+                    %% we do not know about this publication.
+                    {keep_state_and_data, {reply, From, not_found}}
+            end
+    end;
 
 handle_event({call, From},
              {request,
               #{action := truncate = Action} = Detail},
-             _,
+             {ready, _} = State,
              Data) ->
     {next_state,
      {Action, make_ref()},
-     Data,
+     Data#{previous => State},
      [{push_callback_module, pgec_storage_truncate},
       nei({truncate, #{bucket => bucket(Detail)}}),
       {reply, From, ok}]};
@@ -269,13 +347,13 @@ handle_event({call, From},
              {request,
               #{action := write,
                 row := Row} = Detail},
-             _,
+             {ready, _} = State,
              #{mappings := Mappings} = Data) ->
     case ets:lookup(Mappings, pt(Detail)) of
         [] ->
             {next_state,
              unready,
-             Data,
+             Data#{previous => State},
              [{push_callback_module, pgec_storage_backfill},
               nei({missing, Detail}),
               postpone]};
@@ -294,13 +372,13 @@ handle_event({call, From},
              {request,
               #{action := delete,
                 row := Row} = Detail},
-             _,
+             {ready, _} = State,
              #{mappings := Mappings} = Data) ->
     case ets:lookup(Mappings, pt(Detail)) of
         [] ->
             {next_state,
              unready,
-             Data,
+             Data#{previous => State},
              [{push_callback_module, pgec_storage_backfill},
               nei({missing, Detail}),
               postpone]};

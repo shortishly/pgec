@@ -56,6 +56,8 @@ init_per_suite(Config) ->
 
     application:set_env(pgec, http_port, Port),
     application:set_env(pgec, table_metadata_trace, false),
+    application:set_env(pgec, replica_trace, false),
+    application:set_env(pgec, storage_trace, false),
 
     RootPath = filename:join(
                  ?config(manager, Config),
@@ -1031,6 +1033,8 @@ hset_update_invalid_type_test(Config) ->
     ct:log("existing: ~p~n", [Existing]),
 
     W1 = alpha(5),
+
+    ct:log("existing: ~p~n", [W1]),
 
     ?assertMatch(
        [{integer, 0}],

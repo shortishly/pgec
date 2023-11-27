@@ -32,6 +32,10 @@ recv(#{message := #{command := get, keys := Keys}} = Arg) ->
            (Key, A) ->
                try lookup(ptk(Key)) of
                    {ok, #{metadata := Metadata, row := Row}} ->
+                       ?LOG_DEBUG(#{key => Key,
+                                    metadata => Metadata,
+                                    row => Row}),
+
                        [{encode,
                          #{command => value,
                            key => Key,
@@ -40,16 +44,21 @@ recv(#{message := #{command := get, keys := Keys}} = Arg) ->
                            data => jsx:encode(row(Metadata, Row))}} | A];
 
                    not_found ->
+                       ?LOG_DEBUG(#{key => Key, lookup => not_found}),
                        A
                catch
-                   error:badarg ->
+                   Class:Exception:Stacktrace ->
+                       ?LOG_DEBUG(#{class => Class,
+                                    exception => Exception,
+                                    stacktrace => Stacktrace}),
                        A
                end
        end,
        [{encode, #{command => 'end'}}],
        Keys)};
 
-recv(#{message := #{command := Command}}) ->
+recv(#{message := #{command := Command}} = Arg) ->
+    ?LOG_DEBUG(#{arg => Arg}),
     {continue,
      {encode,
       #{command => client_error,

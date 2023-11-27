@@ -17,7 +17,7 @@
 while true;
 do
 
-    psql --host=postgres postgres postgres<<EOF
+    psql --host=db postgres postgres<<EOF
     begin;
 
     with rows as

@@ -26,7 +26,7 @@ callback_mode() ->
     handle_event_function.
 
 
-handle_event({call, _}, _, _, _) ->
+handle_event({call, _}, _, {truncate, _}, _) ->
     {keep_state_and_data, postpone};
 
 handle_event(internal,
@@ -48,10 +48,10 @@ handle_event(internal,
               #{reply := {async, F},
                 label := #{bucket := Bucket, ref := Ref}}},
              {truncate, Ref},
-             Data) ->
+             #{previous := {ready, _} = Previous} = Data) ->
     {next_state,
-     ready,
-     Data,
+     Previous,
+     maps:without([previous], Data),
      lists:foldl(
        fun
            (Key, A) ->

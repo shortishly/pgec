@@ -31,7 +31,6 @@
 -export([truncate/1]).
 -export([update/1]).
 -export([when_ready/1]).
--import(pgec_replica_common, [metadata/4]).
 -import(pgec_statem, [nei/1]).
 -include_lib("kernel/include/logger.hrl").
 
@@ -183,151 +182,49 @@ handle_event({call, From} = EventType,
              position => LSN}})]};
 
 handle_event({call, From} = EventType,
-             {insert = Action,
-              #{relation := #{namespace := Namespace, name := Name},
-                x_log := XLog,
+             {Action,
+              #{relation := #{namespace := Namespace, name := Name} = Relation,
                 tuple := Tuple}} = EventContent,
              State,
              #{metadata := Metadata,
                config := #{publication := Publication}} = Data)
-  when is_map_key({Namespace, Name}, Metadata) ->
+  when Action == insert;
+       Action == update;
+       Action == delete ->
+
     ?LOG_DEBUG(#{event_type => EventType,
                  event_content => EventContent,
                  state => State,
                  data => Data}),
-    {keep_state,
-     Data#{metadata := metadata({Namespace, Name},
-                                x_log,
-                                XLog,
-                                Metadata)},
-     [{reply, From, ok},
 
-      nei({storage_request,
-           #{action => write,
-             publication => Publication,
-             schema => Namespace,
-             table => Name,
-             row => Tuple}}),
+    case Metadata of
+        #{{Namespace, Name} := #{state := dropped}} ->
+            {keep_state_and_data, {reply, From, ok}};
 
-      nei({change,
-           #{namespace => Namespace,
-             action => Action,
-             row => Tuple,
-             name => Name}})]};
+        #{{Namespace, Name} := _} ->
+            {keep_state_and_data,
+             [{reply, From, ok},
 
-handle_event({call, _} = EventType,
-             {insert, #{relation := Relation}} = EventContent,
-             State,
-             Data) ->
-    ?LOG_DEBUG(#{event_type => EventType,
-                 event_content => EventContent,
-                 state => State,
-                 data => Data}),
-    {next_state,
-     unready,
-     Data,
-     [{push_callback_module, pgec_replica_backfill},
-      nei({relation, Relation}),
-      postpone]};
+              nei({storage_request,
+                   #{action => storage_action(Action),
+                     publication => Publication,
+                     schema => Namespace,
+                     table => Name,
+                     row => Tuple}}),
 
-handle_event({call, From} = EventType,
-             {update = Action,
-              #{relation := #{namespace := Namespace, name := Name},
-                x_log := XLog,
-                tuple := Tuple}} = EventContent,
-             State,
-             #{metadata := Metadata,
-               config := #{publication := Publication}} = Data)
-  when is_map_key({Namespace, Name}, Metadata) ->
-    ?LOG_DEBUG(#{event_type => EventType,
-                 event_content => EventContent,
-                 state => State,
-                 data => Data}),
-    {keep_state,
-     Data#{metadata := metadata(
-                         {Namespace, Name},
-                         x_log,
-                         XLog,
-                         Metadata)},
-     [{reply, From, ok},
-
-      nei({storage_request,
-           #{action => write,
-             publication => Publication,
-             schema => Namespace,
-             table => Name,
-             row => Tuple}}),
-
-      nei({change,
-           #{namespace => Namespace,
-             action => Action,
-             row => Tuple,
-             name => Name}})]};
-
-handle_event({call, _} = EventType,
-             {update,
-              #{relation := Relation}} = EventContent,
-             State,
-             Data) ->
-    ?LOG_DEBUG(#{event_type => EventType,
-                 event_content => EventContent,
-                 state => State,
-                 data => Data}),
-    {next_state,
-     unready,
-     Data,
-     [{push_callback_module, pgec_replica_backfill},
-      nei({relation, Relation}),
-      postpone]};
-
-handle_event({call, From} = EventType,
-             {delete = Action,
-              #{relation := #{namespace := Namespace, name := Name},
-                x_log := XLog,
-                tuple := Tuple}} = EventContent,
-             State,
-             #{metadata := Metadata,
-               config := #{publication := Publication}} = Data)
-  when is_map_key({Namespace, Name}, Metadata) ->
-    ?LOG_DEBUG(#{event_type => EventType,
-                 event_content => EventContent,
-                 state => State,
-                 data => Data}),
-    {keep_state,
-     Data#{metadata := metadata(
-                         {Namespace, Name},
-                         x_log,
-                         XLog,
-                         Metadata)},
-     [{reply, From, ok},
-      nei({storage_request,
-           #{action => delete,
-             publication => Publication,
-             schema => Namespace,
-             table => Name,
-             row => Tuple}}),
-
-      nei({change,
-           #{namespace => Namespace,
-             action => Action,
-             row => Tuple,
-             name => Name}})]};
-
-handle_event({call, _} = EventType,
-             {delete,
-              #{relation := Relation}} = EventContent,
-             State,
-             Data) ->
-    ?LOG_DEBUG(#{event_type => EventType,
-                 event_content => EventContent,
-                 state => State,
-                 data => Data}),
-    {next_state,
-     unready,
-     Data,
-     [{push_callback_module, pgec_replica_backfill},
-      nei({relation, Relation}),
-      postpone]};
+              nei({change,
+                   #{namespace => Namespace,
+                     action => Action,
+                     row => Tuple,
+                     name => Name}})]};
+        #{} ->
+            {next_state,
+             unready,
+             Data,
+             [{push_callback_module, pgec_replica_backfill},
+              nei({relation, Relation}),
+              postpone]}
+    end;
 
 handle_event({call, From} = EventType,
              {truncate, #{relations := Relations}} = EventContent,
@@ -389,20 +286,24 @@ handle_event({call, Stream} = EventType,
       nei({set_transaction_snapshot, Id}),
       nei(sync_publication_tables)]};
 
-handle_event({call, Stream} = EventType,
-             {lsn, #{}} = EventContent,
-             State,
-             #{config := #{publication := Publication}} = Data) ->
-    ?LOG_DEBUG(#{event_type => EventType,
-                 event_content => EventContent,
-                 state => State,
-                 data => Data}),
+handle_event({call, Stream},
+             {lsn, LSN},
+             _,
+             #{config := #{publication := Publication}}) ->
+    ?LOG_INFO(#{lsn => LSN}),
     {keep_state_and_data,
      [nei(storage),
+
       nei({storage_request,
            #{action => position,
              publication => Publication,
-             from => Stream}})]};
+             from => Stream}}),
+
+      %% inform storage that the publication is now ready, enabling
+      %% read requests.
+      nei({storage_request,
+           #{action => ready,
+             publication => Publication}})]};
 
 handle_event(info = EventType,
              {'DOWN', _, process, _, shutdown = Reason} = EventContent,
@@ -422,3 +323,10 @@ terminate(_Reason,
           _State,
           #{config := #{scope := Scope, publication := Publication}}) ->
     pg:leave(Scope, [?MODULE, Publication], self()).
+
+
+storage_action(Action) when Action == insert;
+                            Action == update ->
+    write;
+storage_action(delete = Action) ->
+    Action.
