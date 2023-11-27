@@ -39,7 +39,7 @@ and REST API with persistent storage.
 - Support for [row filters and column lists][shortishly-pgec] in
   PostgreSQL 15
 
-![High Level Architecture](pgec-hla-2023-03-08.svg)
+![High Level Architecture](https://shortishly.com/assets/images/pgec-hla-2023-11-27.svg)
 
 The replication process creates a transaction checkpoint ensuring data
 integrity. Once the initial data has been collected, streaming
