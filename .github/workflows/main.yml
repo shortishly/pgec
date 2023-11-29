@@ -167,4 +167,4 @@ jobs:
       - run: |
           sleep 60
       - run: |
-          bats --verbose-run test/bats
+          bats test/bats
