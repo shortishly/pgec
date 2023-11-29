@@ -15,6 +15,5 @@
 #
 
 svg-term \
-    --no-cursor \
     --command "$1" \
-    --window > "$1-$(date +%Y-%m-%d).svg"
+    --window >"$1-$(date +%Y-%m-%d).svg"

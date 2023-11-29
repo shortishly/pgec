@@ -52,7 +52,7 @@ real-time.
 
 ## Quick Start
 
-![demo](pgec-demo-compose-2023-02-22.svg)
+![demo](demos/pgec-compose-2023-11-29.svg)
 
 Clone this repository for the [docker][docker-com-get-docker]
 [compose.yaml](compose.yaml) with sample [PostgreSQL][postgresql-org]

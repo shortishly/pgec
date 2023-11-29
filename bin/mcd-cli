@@ -13,12 +13,4 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 #
-
-docker compose exec --no-TTY db psql --command="update grades set grade='C-' where ssn='234-56-7890'"
-
-svg-term \
-    --no-cursor \
-    --command $(dirname $0)/pgec-compose \
-    --window >pgec-demo-compose-$(date +%Y-%m-%d).svg
-
-echo "Done!"
+echo "$@" | socat -t5 - TCP:localhost:11211,crnl
