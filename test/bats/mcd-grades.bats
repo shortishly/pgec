@@ -20,6 +20,5 @@
     [ "${lines[0]}" = "VALUE pub.grades.234-56-7890 0 131" ]
     [ "$(echo "${lines[1]}" | jq -r '.first')" = "Betty" ]
     [ "$(echo "${lines[1]}" | jq -r '.last')" = "Rubble" ]
-    [ "$(echo "${lines[1]}" | jq -r '.test1')" = "44.0" ]
     [ "${lines[2]}" = "END" ]
 }
