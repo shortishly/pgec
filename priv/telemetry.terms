@@ -22,7 +22,9 @@
 [pgec, replica, reqids_size].
 [pgec, replica, storage].
 
+[pgec, storage, cache].
 [pgec, storage, delete].
 [pgec, storage, get].
+[pgec, storage, keys].
 [pgec, storage, put].
 [pgec, storage, reqids_size].
