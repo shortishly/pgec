@@ -35,6 +35,14 @@
                      9100,
                      11211],
 
+    "portsAttributes": {"3000": {"label": "grafana"},
+                        "5432": {"label": "postgresql"},
+                        "6379": {"label": "redis"},
+                        "8080": {"label": "rest"},
+                        "9090": {"label": "prom"},
+                        "9100": {"label": "metrics"},
+                        "11211": {"label": "memcached"}},
+
     "features": {
         "ghcr.io/devcontainers/features/sshd:1": {},
 
