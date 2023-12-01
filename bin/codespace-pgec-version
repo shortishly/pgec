@@ -14,7 +14,11 @@
 # limitations under the License.
 #
 
-gh codespace create \
-    --repo $(gh repo view --json nameWithOwner --jq .nameWithOwner) \
-    --branch $(git branch --show-current) \
-    --machine basicLinux32gb
+case git branch --show-current in
+    develop)
+        echo "develop"
+        ;;
+    *)
+        echo "latest"
+        ;;
+esac

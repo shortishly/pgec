@@ -14,5 +14,13 @@
 # limitations under the License.
 #
 
+case $(git branch --show-current) in
+    develop)
+        export PGEC_VERSION="develop"
+        ;;
+    *)
+        export PGEC_VERSION="latest"
+        ;;
+esac
 
 docker compose up --detach --remove-orphans

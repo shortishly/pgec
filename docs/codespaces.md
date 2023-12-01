@@ -42,7 +42,7 @@ Once in the secure shell environment, you can check that
 running OK:
 
 ```shell
-docker compose --profile all ps
+docker compose ps
 ```
 
 To build pgec, [dialyze][erlang-org-dialyzer] and run the
