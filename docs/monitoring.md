@@ -11,7 +11,7 @@ The following sections describe the metrics that are exposed by pgec.
 
 Metrics for the BEAM itself:
 
-![beam memory dashboard](docs/beam_memory.png)
+![beam memory dashboard](beam_memory.png)
 
 * `beam_memory`, is a gauge recording memory usage in bytes classified
   by type..
@@ -24,7 +24,7 @@ Metrics for the BEAM itself:
 The storage cache is a memory KV cache (implemented using
 [ETS][erlang-org-ets]), automatically expiring unused values.
 
-![pgec storage cache dashboard](docs/pgec_cache.png)
+![pgec storage cache dashboard](pgec_cache.png)
 
 * `pgec_storage_cache`, labelled with the action (hit, miss, expired,
   delete, update, insert)
@@ -35,7 +35,7 @@ Storage requests that are processed by the storage backend
 (leveled). Reads that are as a result of a cache miss, and all writes
 will be processed by the storage backend:
 
-![pgec storage backend dashboard](docs/pgec_storage.png)
+![pgec storage backend dashboard](pgec_storage.png)
 
 * pgec_storage_delete_count, requests to delete a key from the store.
 * pgec_storage_get_count, requests to read a value represented by a
@@ -46,7 +46,7 @@ will be processed by the storage backend:
 
 Metrics for the redis compatible protocol subsystem:
 
-![resp bytes dashboard](docs/resp_bytes.png)
+![resp bytes dashboard](resp_bytes.png)
 
 * `resp_listener_accept`, `resp_listener_bind`,
   `resp_listener_connect` `resp_listener_listen`, `resp_listener_open`
@@ -80,7 +80,7 @@ Metrics for the REST endpoint:
 
 Metrics for PostgreSQL replication:
 
-![pgmp replication dashboard](docs/pgmp_replication.png)
+![pgmp replication dashboard](pgmp_replication.png)
   
 * pgmp_mm_execute_rows, includes the number of rows processed during
   initial data collection, prior to streaming replication starting.
