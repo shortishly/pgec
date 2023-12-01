@@ -6,24 +6,16 @@ services:
 - [prometheus][prometheus-io] configured using
   [prometheus.yml](../example/prometheus.yml)
 - [PostgreSQL][postgresql-org] with [init.sql](../example/init.sql)
-- [pgec][pgec] with a [memcached][memcached-org] and REST API.
-
-It defines the following [profiles][compose-spec-profiles]:
-
-- all (postgres, prometheus, pgec).
-- monitoring (prometheus).
-- db (postgres).
-- cache (pgec).
+- [pgec][pgec] with a Redis, [memcached][memcached-org] and REST API.
 
 ```shell
-docker compose exec postgres psql postgres postgres
+docker compose exec db psql postgres postgres
 ```
 
 To bring all services up:
 
 ```shell
 docker compose \
-       --profile all \
        up \
        --detach \
        --remove-orphans
@@ -35,7 +27,7 @@ this [directory](../example/initdb.d).
 To check that all services are running OK:
 
 ```shell
-docker compose --profile all ps
+docker compose ps
 ```
 
 You can check cached data in pgec with:
@@ -72,14 +64,12 @@ To bring all services down and remove the persistent DB volume:
 
 ```shell
 docker compose \
-       --profile all \
        down \
        --remove-orphans \
-       --volumes              
+       --volumes
 ```
 
 [compose-spec-io]: https://compose-spec.io
-[compose-spec-profiles]: https://github.com/compose-spec/compose-spec/blob/master/spec.md#profiles
 [memcached-org]: https://memcached.org/
 [pgec]: https://github.com/shortishly/pgec
 [postgresql-org]: https://www.postgresql.org/
