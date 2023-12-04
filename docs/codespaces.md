@@ -14,36 +14,71 @@ Clone the pgec repository:
 gh repo clone shortishly/pgec
 ```
 
+Change directory to be within the repository:
+
+```shell
+cd pgec
+```
+
 Create a codespace for pgec:
 
 ```shell
-gh codespace create \
-    --repo $(gh repo view \
-        --json nameWithOwner \
-        --jq .nameWithOwner) \
-    --branch develop \
-    --machine basicLinux32gb
+./bin/codespace-create
 ```
 
-Run a secure shell into the codespace:
+Run a secure shell into the codespace, you may see `Starting
+codespace` while it is provisioned (which can take a while):
 
 ```shell
-gh codespace ssh \
-    --codespace $(gh codespace ls \
-        --repo $(gh repo view \
-            --json nameWithOwner \
-            --jq .nameWithOwner) \
-        --json name \
-        --jq '.[].name')
+./bin/codespace-ssh
 ```
 
-Once in the secure shell environment, you can check that
-[PostgreSQL][postgresql-org] and [Prometheus][prometheus-io] are
-running OK:
+## Running
+
+Once in the codespace secure shell, you can check that
+[PostgreSQL][postgresql-org], [Prometheus][prometheus-io],
+[Grafana][grafana-com] and pgec are all running with:
 
 ```shell
-docker compose ps
+./bin/ps
 ```
+
+The services may still be provisioning after you have logged in. If
+you see:
+
+```shell
+@shortishly ➜ /workspaces/pgec (develop) $ ./bin/ps
+SERVICE   IMAGE     STATUS
+```
+
+Wait a couple of minutes until:
+
+```shell
+@shortishly ➜ /workspaces/pgec (develop) $ ./bin/ps
+SERVICE          IMAGE                             STATUS
+db               postgres:16.1                     Up 5 minutes (healthly)
+grafana          grafana/grafana:10.1.5            Up 5 minutes
+load-generator   postgres:16.1                     Up 5 minutes
+pgec             ghcr.io/shortishly/pgec:develop   Up 5 minutes
+prometheus       prom/prometheus:v2.47.2           Up 5 minutes
+```
+
+To run the smoke tests against the example data:
+
+```shell
+@shortishly ➜ /workspaces/pgec (develop) $ bats test/bats
+```
+
+The service ports are [published and
+forwarded][codespace-port-forward] by the codespace. In a terminal on
+your local machine you can look at the Grafana running remotely on the
+codespace with sample dashboards installed with:
+
+```shell
+./bin/codespace-grafana
+```
+
+## Building
 
 To build pgec, [dialyze][erlang-org-dialyzer] and run the
 [unit][erlang-org-eunit-ug] tests:
@@ -85,5 +120,7 @@ gh codespace delete \
 [gihub-com-cacfar]: https://docs.github.com/en/codespaces/developing-in-codespaces/creating-a-codespace-for-a-repository
 [github-com-codespaces]: https://docs.github.com/en/codespaces
 [github-com-installation]: https://cli.github.com/manual/installation
+[grafana-com]: https://grafana.com
 [postgresql-org]: https://www.postgresql.org/
 [prometheus-io]: https://prometheus.io
+[codespace-port-forward]: https://docs.github.com/en/codespaces/developing-in-a-codespace/forwarding-ports-in-your-codespace
