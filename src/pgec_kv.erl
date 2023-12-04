@@ -20,6 +20,8 @@
 -export([keys/2]).
 -export([row/2]).
 -export([row/3]).
+-export([row/4]).
+-export([value/3]).
 -include_lib("kernel/include/logger.hrl").
 
 
@@ -38,7 +40,8 @@ keys(#{keys := Positions, oids := Types}, Keys) ->
                 (Position) ->
                     lists:nth(Position, Types)
             end,
-            Positions)))).
+            Positions))),
+      pgmp_types:cache(pgec_util:db())).
 
 
 key(#{keys := Positions} = Metadata, Keys)
@@ -68,41 +71,47 @@ row(Metadata, ContentType) ->
             [?FUNCTION_NAME(Metadata, ContentType, Values) | A]
     end.
 
+row(Metadata, ContentType, Values) ->
+    ?FUNCTION_NAME(Metadata,
+                   ContentType,
+                   Values,
+                   pgmp_types:cache(pgec_util:db())).
 
-row(#{columns := Columns, oids := OIDS} = Metadata, ContentType, Values) ->
+
+row(#{columns := Columns, oids := OIDS} = Metadata, ContentType, Values, Types) ->
     ?LOG_DEBUG(#{metadata => Metadata,
                  content_type => ContentType,
                  values => Values}),
     maps:from_list(
       lists:zipwith3(
-        combine(ContentType),
+        combine(ContentType, Types),
         Columns,
         OIDS,
-        values(Metadata, Values))).
+        tuple_to_list(Values))).
 
 
-values(#{keys := [_]}, Values) ->
-    tuple_to_list(Values);
+%% values(#{keys := [_]}, Values) ->
+%%     tuple_to_list(Values);
 
-values(#{keys := KeyPositions}, CompositeWithValues) when is_tuple(CompositeWithValues) ->
-    [Composite | Values] = tuple_to_list(CompositeWithValues),
-    values(1, KeyPositions, tuple_to_list(Composite), Values).
-
-
-values(_, [], [], Values) ->
-    Values;
-values(_, _, Keys, []) ->
-    Keys;
-values(Pos, [Pos | KeyPositions], [Key | Keys], Values) ->
-    [Key | ?FUNCTION_NAME(Pos + 1, KeyPositions, Keys, Values)];
-values(Pos, KeyPositions, Keys, [Value | Values]) ->
-    [Value | ?FUNCTION_NAME(Pos + 1, KeyPositions, Keys, Values)].
+%% values(#{keys := KeyPositions}, CompositeWithValues) when is_tuple(CompositeWithValues) ->
+%%     [Composite | Values] = tuple_to_list(CompositeWithValues),
+%%     values(1, KeyPositions, tuple_to_list(Composite), Values).
 
 
-combine(ContentType) ->
+%% values(_, [], [], Values) ->
+%%     Values;
+%% values(_, _, Keys, []) ->
+%%     Keys;
+%% values(Pos, [Pos | KeyPositions], [Key | Keys], Values) ->
+%%     [Key | ?FUNCTION_NAME(Pos + 1, KeyPositions, Keys, Values)];
+%% values(Pos, KeyPositions, Keys, [Value | Values]) ->
+%%     [Value | ?FUNCTION_NAME(Pos + 1, KeyPositions, Keys, Values)].
+
+
+combine(ContentType, Types) ->
     fun
-        (Column, OID, Value) ->
-            #{OID := ColumnType} = pgmp_types:cache(),
+        (Column, OID, Value) when is_map_key(OID, Types) ->
+            #{OID := ColumnType} = Types,
             {Column, value(ContentType, ColumnType, Value)}
     end.
 
@@ -256,13 +265,17 @@ value(ContentType,
     #{from => From, to => To};
 
 value(ContentType,
-      #{<<"typname">> := <<"timestamp">>} = ColumnType,
-      Value) when is_integer(Value) ->
+      #{<<"typname">> := Name} = ColumnType,
+      Value) when (Name == <<"timestamp">> orelse
+                   Name == <<"timestampz">>) andalso
+                  is_integer(Value) ->
     ?LOG_DEBUG(#{content_type => ContentType,
                  column_type => ColumnType,
                  value => Value}),
     iolist_to_binary(
-      calendar:system_time_to_rfc3339(Value,  [{unit, microsecond}]));
+      calendar:system_time_to_rfc3339(
+        Value,
+        [{unit, microsecond}, {offset, "Z"}]));
 
 value(ContentType, ColumnType, Value) ->
     ?LOG_DEBUG(#{content_type => ContentType,

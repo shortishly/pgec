@@ -13,15 +13,11 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 #
-export PGEC_VERSION=develop
-docker compose --profile all down --remove-orphans --volumes
-docker compose --profile all up --detach --remove-orphans
-sleep 30
-clear
+
 
 svg-term \
     --no-cursor \
     --command $(dirname $0)/pgec-compose \
-    --window > pgec.svg
+    --window >pgec-demo-compose-$(date +%Y-%m-%d).svg
 
 echo "Done!"

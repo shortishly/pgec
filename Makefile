@@ -17,78 +17,77 @@ PROJECT = pgec
 PROJECT_DESCRIPTION = PostgreSQL Edge Cache
 PROJECT_VERSION = ${shell git describe --tags}
 
+COVER = 1
+COVER_REPORT_DIR = _site/cover
+CT_LOGS_DIR = _site/ct
+EDOC_OPTS = {preprocess, true}, {dir, "_site/edoc"}
+
 
 BUILD_DEPS += relx
 RELX_TAR = 0
 
-DEPS = \
-	cowboy \
-	cowboy_telemetry \
-	jsx \
-	mcd \
-	metrics \
-	pgmp \
-	resp
+DEPS += cowboy
+DEPS += cowboy_telemetry
+DEPS += envy
+DEPS += jsx
+DEPS += leveled
+DEPS += mcd
+DEPS += metrics
+DEPS += pgmp
+DEPS += resp
 
-SHELL_DEPS = \
-	sync
+SHELL_DEPS += sync
 
-LOCAL_DEPS = \
-	inets
+LOCAL_DEPS += inets
 
-SHELL_OPTS = \
-	-config dev.config \
-	-s $(PROJECT) \
-	-s sync \
-	+pc unicode
+SHELL_OPTS += +pc unicode
+SHELL_OPTS += -config dev.config
+SHELL_OPTS += -s $(PROJECT)
+SHELL_OPTS += -s sync
 
 dep_cowboy_telemetry = git https://github.com/beam-telemetry/cowboy_telemetry.git
-dep_metrics = git https://github.com/shortishly/metrics.git
+dep_envy = $(if $(DEP_LN),ln ../../envy,git https://github.com/shortishly/envy.git)
+dep_leveled = git https://github.com/martinsumner/leveled.git
+dep_mcd = $(if $(DEP_LN),ln ../../mcd,git https://github.com/shortishly/mcd.git)
+dep_metrics = $(if $(DEP_LN),ln ../../metrics,git https://github.com/shortishly/metrics.git)
+dep_pgmp = $(if $(DEP_LN),ln ../../pgmp,git https://github.com/shortishly/pgmp.git)
+dep_resp = $(if $(DEP_LN),ln ../../resp,git https://github.com/shortishly/resp.git)
 
-
-dep_mcd = git https://github.com/shortishly/mcd.git
-dep_pgmp = git https://github.com/shortishly/pgmp.git
-dep_resp = git https://github.com/shortishly/resp.git
-
-# dep_mcd = ln ../../mcd
-# dep_pgmp = ln ../../pgmp
-# dep_resp = ln ../../resp
-
-dep_mcd_commit = 0.5.0
-dep_pgmp_commit = 0.21.0
-dep_resp_commit = 0.3.0
-
-dep_cowboy_commit = 2.9.0
+dep_cowboy_commit = 2.10.0
 dep_cowboy_telemetry_commit = v0.4.0
+dep_envy_commit = 0.9.2
 dep_jsx_commit = v3.1.0
-dep_metrics_commit = 0.2.0
+dep_leveled_commit = 1.0.13
+dep_mcd_commit = 0.6.0
+dep_metrics_commit = 0.5.0
+dep_pgmp_commit = 0.23.0
+dep_resp_commit =  0.5.0
 
-
-PLT_APPS = \
-	any \
-	asn1 \
-	backoff \
-	bbmustache \
-	compiler \
-	cowboy \
-	cowlib \
-	crypto \
-	envy \
-	inets \
-	jsx \
-	mnesia \
-	pgmp \
-	phrase \
-	public_key \
-	ranch \
-	resp \
-	runtime_tools \
-	ssl \
-	stdlib \
-	syntax_tools \
-	telemetry \
-	tools \
-	xmerl
+PLT_APPS += any
+PLT_APPS += asn1
+PLT_APPS += backoff
+PLT_APPS += bbmustache
+PLT_APPS += compiler
+PLT_APPS += cowboy
+PLT_APPS += cowlib
+PLT_APPS += crypto
+PLT_APPS += envy
+PLT_APPS += inets
+PLT_APPS += jsx
+PLT_APPS += leveled
+PLT_APPS += mnesia
+PLT_APPS += pgmp
+PLT_APPS += phrase
+PLT_APPS += public_key
+PLT_APPS += ranch
+PLT_APPS += resp
+PLT_APPS += runtime_tools
+PLT_APPS += ssl
+PLT_APPS += stdlib
+PLT_APPS += syntax_tools
+PLT_APPS += telemetry
+PLT_APPS += tools
+PLT_APPS += xmerl
 
 
 include erlang.mk

@@ -16,6 +16,9 @@
 -module(pgec_util).
 
 
+-export([application_name/0]).
+-export([db/0]).
+-export([scope/0]).
 -export([snake_case/1]).
 -export([tl_snake_case/1]).
 
@@ -35,3 +38,20 @@ tl_snake_case(Name) ->
         Names ->
             snake_case(tl(Names))
     end.
+
+
+scope() ->
+    #{scope := Scope} = db(),
+    Scope.
+
+
+application_name() ->
+    #{application_name := ApplicationName} = db(),
+    ApplicationName.
+
+
+db() ->
+    ?FUNCTION_NAME(maps:next(maps:iterator(pgmp_dbs:all()))).
+
+db({_, Configuration, _}) ->
+    Configuration.

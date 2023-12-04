@@ -37,6 +37,13 @@ init_per_suite(Config) ->
     application:set_env(pgmp,
                         replication_logical_publication_names,
                         Publication),
+    application:set_env(pgmp,
+                        replication_logical_temporary,
+                        false),
+    application:set_env(pgmp,
+                        replication_logical_module,
+                        pgec_replica),
+
     application:set_env(pgmp, pgmp_replication_enabled, false),
     application:set_env(pgmp, mm_trace, false),
     application:set_env(pgmp, mm_log, true),
@@ -47,6 +54,12 @@ init_per_suite(Config) ->
 
     application:set_env(pgec, http_port, Port),
     application:set_env(pgec, table_metadata_trace, false),
+
+    RootPath = filename:join(
+                 ?config(manager, Config),
+                 "leveled"),
+    ok = filelib:ensure_dir(RootPath),
+    application:set_env(pgec, leveled_root_path, RootPath),
 
     application:set_env(mcd, protocol_callback, pgec_mcd_emulator),
     application:set_env(resp, protocol_callback, pgec_resp_emulator),
@@ -112,16 +125,24 @@ init_per_suite(Config) ->
       Columns},
      {data_row,
       [Publication,
-       <<"public">>,
+       Schema,
        Table]},
      {command_complete,
       {select,1}}] = pgmp_connection_sync:execute(#{}),
 
     [{command_complete, commit}] = pgmp_connection_sync:query(#{sql => "commit"}),
 
-    {ok, Sup} = pgmp_rep_sup:start_child(Publication),
+    [{_, DbSup, supervisor, [pgmp_db_sup]}] = supervisor:which_children(
+                                                pgmp_sup:get_child_pid(
+                                                  pgmp_sup,
+                                                  dbs_sup)),
+    DB = pgmp_sup:get_child_pid(DbSup, db),
 
-    {_, Manager, worker, _} = pgmp_sup:get_child(Sup, manager),
+    {ok, LogRepSup} = pgmp_db:start_replication_on_publication(
+                        DB,
+                        Publication),
+
+    {_, Manager, worker, _} = pgmp_sup:get_child(LogRepSup, manager),
 
     ct:log("manager: ~p~n", [sys:get_state(Manager)]),
 
@@ -133,32 +154,59 @@ init_per_suite(Config) ->
              5),
 
     ct:log("manager: ~p~n", [sys:get_state(Manager)]),
-    ct:log("which_groups: ~p~n", [pgmp_pg:which_groups()]),
-    ct:log("publication: ~p~n", [[pgmp_rep_log_ets, Publication]]),
-    ct:log("get_members: ~p~n", [pgmp_pg:get_members([pgmp_rep_log_ets, Publication])]),
+    ct:log("which_groups: ~p~n", [pgec_pg:which_groups()]),
+    ct:log("publication: ~p~n", [[pgec_replica, Publication]]),
+    ct:log("get_members: ~p~n", [pgec_pg:get_members([pgec_replica, Publication])]),
+
+
+    wait_for(false,
+             fun
+                 () ->
+                     pgec_storage_sync:keys(
+                       #{publication => Publication,
+                         table => Table}) == []
+             end,
+             5),
+
+    ct:log("keys: ~p~n",
+           [pgec_storage_sync:keys(
+              #{publication => Publication,
+                table => Table})]),
 
     [{manager, Manager},
+     {db, DB},
      {publication, Publication},
+     {schema, Schema},
      {table, Table},
-     {port, 8080},
-     {replica, binary_to_atom(Table)} | Config].
+     {port, 8080} | Config].
 
 
 update_test(Config) ->
     Manager = ?config(manager, Config),
     Table = ?config(table, Config),
-    Replica = ?config(replica, Config),
+    Schema = ?config(schema, Config),
     Port = ?config(port, Config),
     Publication = ?config(publication, Config),
 
-    ct:log("table: ~p,~nreplica: ~p,~nport: ~p,~npublication: ~p~n",
-           [Table, Replica, Port, Publication]),
+    ct:log("schema: ~p,~ntable: ~p,~nport: ~p,~npublication: ~p~n",
+           [Schema, Table, Port, Publication]),
 
     {reply, ok} = gen_statem:receive_response(
-                    pgmp_rep_log_ets:when_ready(
+                    pgec_replica:when_ready(
                       #{server_ref => Manager})),
 
-    {K, _} = Existing = pick_one(ets:tab2list(Replica)),
+    K = pick_one(
+          pgec_storage_sync:keys(
+            #{publication => Publication,
+              table => Table})),
+
+    ct:log("k: ~p~n", [K]),
+
+    {ok, Existing} = pgec_storage_sync:read(
+                       #{publication => Publication,
+                         table => Table,
+                         key => K}),
+
     ct:log("existing: ~p~n", [Existing]),
 
     [{command_complete, 'begin'}] = pgmp_connection_sync:query(#{sql => "begin"}),
@@ -183,9 +231,12 @@ update_test(Config) ->
     [{command_complete, commit}] = pgmp_connection_sync:query(#{sql => "commit"}),
 
     wait_for(
-      [list_to_tuple(Updated)],
+      {ok, V},
       fun () ->
-              ets:lookup(Replica, K)
+              pgec_storage_sync:read(
+                #{publication => Publication,
+                  table => Table,
+                  key => K})
       end),
 
     URL = uri_string:recompose(
@@ -214,16 +265,30 @@ update_test(Config) ->
 delete_test(Config) ->
     Manager = ?config(manager, Config),
     Table = ?config(table, Config),
-    Replica = ?config(replica, Config),
     Port = ?config(port, Config),
     Publication = ?config(publication, Config),
+    Schema = ?config(schema, Config),
+
+    ct:log("schema: ~p,~ntable: ~p,~nport: ~p,~npublication: ~p~n",
+           [Schema, Table, Port, Publication]),
 
     {reply, ok} = gen_statem:receive_response(
-                    pgmp_rep_log_ets:when_ready(
+                    pgec_replica:when_ready(
                       #{server_ref => Manager})),
 
-    {K, V} = Existing = pick_one(ets:tab2list(Replica)),
-    ct:log("existing: ~p~n", [Existing]),
+    K = pick_one(
+          pgec_storage_sync:keys(
+            #{publication => Publication,
+              table => Table})),
+
+    ct:log("k: ~p~n", [K]),
+
+    {ok, V} = pgec_storage_sync:read(
+                       #{publication => Publication,
+                         table => Table,
+                         key => K}),
+
+    ct:log("v: ~p~n", [V]),
 
     [{command_complete, 'begin'}] = pgmp_connection_sync:query(#{sql => "begin"}),
 
@@ -245,9 +310,12 @@ delete_test(Config) ->
     [{command_complete, commit}] = pgmp_connection_sync:query(#{sql => "commit"}),
 
     wait_for(
-      [],
+      not_found,
       fun () ->
-              ets:lookup(Replica, K)
+              pgec_storage_sync:read(
+                #{publication => Publication,
+                  table => Table,
+                  key => K})
       end),
 
     URL = uri_string:recompose(
@@ -282,12 +350,15 @@ delete_test(Config) ->
 insert_test(Config) ->
     Manager = ?config(manager, Config),
     Table = ?config(table, Config),
-    Replica = ?config(replica, Config),
     Port = ?config(port, Config),
     Publication = ?config(publication, Config),
+    Schema = ?config(schema, Config),
+
+    ct:log("schema: ~p,~ntable: ~p,~nport: ~p,~npublication: ~p~n",
+           [Schema, Table, Port, Publication]),
 
     {reply, ok} = gen_statem:receive_response(
-                    pgmp_rep_log_ets:when_ready(
+                    pgec_replica:when_ready(
                       #{server_ref => Manager})),
 
 
@@ -311,9 +382,12 @@ insert_test(Config) ->
     [{command_complete, commit}] = pgmp_connection_sync:query(#{sql => "commit"}),
 
     wait_for(
-      [list_to_tuple(Inserted)],
+      {ok, V},
       fun () ->
-              ets:lookup(Replica, K)
+              pgec_storage_sync:read(
+                #{publication => Publication,
+                  table => Table,
+                  key => K})
       end),
 
     URL = uri_string:recompose(
@@ -371,7 +445,19 @@ wait_for(Expected, Check, N) ->
 
 end_per_suite(Config) ->
     Table = ?config(table, Config),
-    _Publication = ?config(publication, Config),
+    Publication = ?config(publication, Config),
+    DB = ?config(db, Config),
+
+    ct:log(
+      "stop_replication: ~p~n",
+      [pgmp_db:stop_replication_on_publication(
+         DB,
+         Publication)]),
+
+    ct:log(
+      "~p~n",
+      [common:pbe(#{sql => "select pg_drop_replication_slot($1)",
+                    args => [pgmp_rep_log:slot_name(Publication)]})]),
 
     ct:log("~s: ~p~n",
            [Table,
@@ -381,7 +467,7 @@ end_per_suite(Config) ->
                            "drop table ~s cascade",
                            [Table]))})]),
 
-    common:purge_applications().
+    common:stop_applications().
 
 
 alpha(N) ->
@@ -389,6 +475,7 @@ alpha(N) ->
 
 
 pick_one(Pool) ->
+    ct:log("pool: ~p~n", [Pool]),
     [Victim] = pick(1, Pool),
     Victim.
 
@@ -404,4 +491,3 @@ pick(N, Pool, A) ->
     ?FUNCTION_NAME(N - 1,
                    Pool,
                    [lists:nth(rand:uniform(length(Pool)), Pool) | A]).
-

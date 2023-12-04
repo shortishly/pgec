@@ -76,6 +76,36 @@ handle([cowboy, request, exception] = EventName,
            delta => 1}],
         Measurements));
 
+handle([pgec, System, _] = EventName,
+       #{count := N} = Measurements,
+       Metadata,
+       Config) when System == storage;
+                    System == replica ->
+    ?LOG_DEBUG(#{event_name => EventName,
+                 measurements => Measurements,
+                 metadata => Metadata,
+                 config => Config}),
+
+    metrics:counter(
+      [#{name => pgec_util:snake_case(EventName ++ [count]),
+         label => Metadata,
+         delta => N}]);
+
+handle([pgec, System, _] = EventName,
+       #{value := N} = Measurements,
+       Metadata,
+       Config) when System == storage;
+                    System == replica ->
+    ?LOG_DEBUG(#{event_name => EventName,
+                 measurements => Measurements,
+                 metadata => Metadata,
+                 config => Config}),
+
+    metrics:gauge(
+      [#{name => pgec_util:snake_case(EventName),
+         label => Metadata,
+         value => N}]);
+
 handle(EventName, Measurements, Metadata, Config) ->
     ?LOG_INFO(#{event_name => EventName,
                 measurements => Measurements,

@@ -17,9 +17,10 @@
 
 
 -export([http/1]).
+-export([leveled/1]).
 -export([sup_flags/1]).
--export([timeout/1]).
 -export([telemetry/1]).
+-export([timeout/1]).
 -import(envy, [envy/1]).
 
 
@@ -50,6 +51,12 @@ timeout(no_members = Name) ->
            names => [Name, timeout],
            default => timer:seconds(1)});
 
+timeout(expiry = Name) ->
+    envy(#{caller => ?MODULE,
+           type => integer_or_atom,
+           names => [Name, timeout],
+           default => timer:minutes(5)});
+
 timeout(Name) ->
     envy(#{caller => ?MODULE,
            type => integer_or_atom,
@@ -77,3 +84,14 @@ telemetry(config = Name) ->
     envy:get_env(pgec,
                  pgmp_util:snake_case([?FUNCTION_NAME, Name]),
                  [app_env, {default, []}]).
+
+
+leveled(root_path = Name) ->
+    envy(#{caller => ?MODULE,
+           names => [?FUNCTION_NAME, Name],
+           default => "/data"});
+
+leveled(log_level = Name) ->
+    envy(#{caller => ?MODULE,
+           names => [?FUNCTION_NAME, Name],
+           default => warn}).

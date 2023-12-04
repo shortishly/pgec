@@ -1,11 +1,45 @@
+<br>
+
+<p align="center">
+    <a href="https://shortishly.github.io/pgec/cover/">
+      <img alt="Test Coverage" src="https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fshortishly.github.io%2Fpgec%2Fcover%2Fcoverage.json&query=%24.total&suffix=%25&style=flat-square&label=Test%20Coverage&color=green">
+    </a>
+    <a href="https://shortishly.github.io/pgec/ct/">
+      <img alt="Test Results" src="https://img.shields.io/badge/Tests-Common%20Test-green?style=flat-square">
+    </a>
+    <a href="https://shortishly.github.io/pgec/edoc/">
+      <img alt="edoc" src="https://img.shields.io/badge/Documentation-edoc-green?style=flat-square">
+    </a>
+    <a href="https://erlang.org/">
+      <img alt="Erlang/OTP 25+" src="https://img.shields.io/badge/Erlang%2FOTP-25%2B-green?style=flat-square">
+    </a>
+    <a href="https://www.apache.org/licenses/LICENSE-2.0">
+      <img alt="Apache-2.0" src="https://img.shields.io/github/license/shortishly/pgec?style=flat-square">
+    </a>
+</p>
+
 # PostgreSQL Edge Cache (PGEC)
 
-pgec is an Apache licensed real-time in memory PostgreSQL logical
-replication cache with Redis, Memcached and REST APIs. It supports
-column lists and row filters with the latest features of replication
-in PostgreSQL 15.
+pgec replicates data from PostgreSQL accessed with a Redis, Memcached
+and REST API with persistent storage.
 
-![High Level Architecture](pgec-hla-2023-03-08.svg)
+## Features
+
+- PostgreSQL [logical replication support][pgmp] for [cache
+  consistency][shortishly-ccwsr]
+- In memory cache with expiry, backed by a persistent store using
+  [leveled][github-martinsumner-leveled] (from
+  [riak][github-basho-riak]).
+- [Redis compatible API](docs/resp.md)
+- [Memcached compatible API][mcd]
+- REST API
+- a [compose](docs/compose.md) having PostgreSQL with example data,
+  [Grafana][grafana], and [Prometheus][prometheus-io].
+- a [GitHub Codespace](docs/codespaces.md) for build and development
+- Support for [row filters and column lists][shortishly-pgec] in
+  PostgreSQL 15
+
+![High Level Architecture](https://shortishly.com/assets/images/pgec-hla-2023-11-27.svg)
 
 The replication process creates a transaction checkpoint ensuring data
 integrity. Once the initial data has been collected, streaming
@@ -16,22 +50,9 @@ real-time.
 
 ![main](https://github.com/shortishly/pgmp/actions/workflows/main.yml/badge.svg)
 
-## Features
-
-- PostgreSQL [logical replication support][pgmp] for [cache
-  consistency][shortishly-ccwsr]
-- [Redis compatible API](docs/resp.md)
-- [Memcached compatible API][mcd]
-- REST API
-- a [compose](docs/compose.md) having PostgreSQL with example data,
-  [Grafana][grafana], and [Prometheus][prometheus-io].
-- a [GitHub Codespace](docs/codespaces.md) for build and development
-- Support for [row filters and column lists][shortishly-pgec] in
-  PostgreSQL 15
-
 ## Quick Start
 
-![demo](pgec-demo-compose-2023-02-22.svg)
+![demo](demos/pgec-compose-2023-11-29.svg)
 
 Clone this repository for the [docker][docker-com-get-docker]
 [compose.yaml](compose.yaml) with sample [PostgreSQL][postgresql-org]
@@ -56,7 +77,7 @@ cd pgec
 Start up everything with:
 
 ```shell
-docker compose --profile all up --detach --remove-orphans
+docker compose up --detach --remove-orphans
 ```
 
 Sample data is populated from the scripts in [this
@@ -155,12 +176,6 @@ VALUE pub.grades.234-56-7890 0 120
 END
 ```
 
-To retrieve the whole table via the REST API:
-
-```shell
-curl -s http://localhost:8080/pub/grades | jq
-```
-
 Primary keys via REST API:
 
 ```shell
@@ -211,6 +226,8 @@ curl -s http://localhost:8080/pub/cities/Tulsa/OK | jq
 
 [cli-github-com]: https://cli.github.com
 [docker-com-get-docker]: https://docs.docker.com/get-docker/
+[github-basho-riak]: https://github.com/basho/riak
+[github-martinsumner-leveled]: https://github.com/martinsumner/leveled
 [grafana]: https://grafana.com/
 [mcd]: https://github.com/shortishly/mcd
 [pgmp]: https://github.com/shortishly/pgmp

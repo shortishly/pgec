@@ -50,6 +50,12 @@ init_per_suite(Config) ->
     application:set_env(pgec, http_port, Port),
     application:set_env(pgec, table_metadata_trace, false),
 
+    RootPath = filename:join(
+                 ?config(manager, Config),
+                 "leveled"),
+    ok = filelib:ensure_dir(RootPath),
+    application:set_env(pgec, leveled_root_path, RootPath),
+
     application:set_env(mcd, protocol_callback, pgec_mcd_emulator),
     application:set_env(resp, protocol_callback, pgec_resp_emulator),
     application:set_env(resp, listener_enabled, true),
@@ -115,9 +121,19 @@ init_per_suite(Config) ->
 
     [{command_complete, commit}] = pgmp_connection_sync:query(#{sql => "commit"}),
 
-    {ok, Sup} = pgmp_rep_sup:start_child(Publication),
 
-    {_, Manager, worker, _} = pgmp_sup:get_child(Sup, manager),
+    [{_, DbSup, supervisor, [pgmp_db_sup]}] = supervisor:which_children(
+                                                pgmp_sup:get_child_pid(
+                                                  pgmp_sup,
+                                                  dbs_sup)),
+
+    DB = pgmp_sup:get_child_pid(DbSup, db),
+
+    {ok, LogRepSup} = pgmp_db:start_replication_on_publication(
+                        DB,
+                        Publication),
+
+    {_, Manager, worker, _} = pgmp_sup:get_child(LogRepSup, manager),
 
     ct:log("manager: ~p~n", [sys:get_state(Manager)]),
 
@@ -129,13 +145,14 @@ init_per_suite(Config) ->
              5),
 
     ct:log("manager: ~p~n", [sys:get_state(Manager)]),
-    ct:log("which_groups: ~p~n", [pgmp_pg:which_groups()]),
+    ct:log("which_groups: ~p~n", [pgec_pg:which_groups()]),
     ct:log("publication: ~p~n", [[pgmp_rep_log_ets, Publication]]),
-    ct:log("get_members: ~p~n", [pgmp_pg:get_members([pgmp_rep_log_ets, Publication])]),
+    ct:log("get_members: ~p~n", [pgec_pg:get_members([pgmp_rep_log_ets, Publication])]),
 
     {ok, Client} = resp_client:start(),
 
     [{manager, Manager},
+     {db, DB},
      {publication, Publication},
      {schema, Schema},
      {table, Table},
@@ -148,18 +165,21 @@ hset_insert_test(Config) ->
     Manager = ?config(manager, Config),
     Table = ?config(table, Config),
     Schema = ?config(schema, Config),
-    Replica = ?config(replica, Config),
     Port = ?config(port, Config),
     Publication = ?config(publication, Config),
 
-    ct:log("schema: ~p,~ntable: ~p,~nreplica: ~p,~nport: ~p,~npublication: ~p~n",
-           [Schema, Table, Replica, Port, Publication]),
+    ct:log("schema: ~p,~ntable: ~p,~nport: ~p,~npublication: ~p~n",
+           [Schema, Table, Port, Publication]),
 
     {reply, ok} = gen_statem:receive_response(
-                    pgmp_rep_log_ets:when_ready(
+                    pgec_replica:when_ready(
                       #{server_ref => Manager})),
 
-    ct:log("~p~n", [lists:sort(ets:tab2list(Replica))]),
+
+    ct:log("~p~n",
+           [lists:sort(pgec_storage_sync:keys(
+                         #{publication => Publication,
+                           table => Table}))]),
 
     [{row_description, _},
      {data_row, [K]},
@@ -188,10 +208,13 @@ hset_insert_test(Config) ->
            {bulk, C}]})),
 
     wait_for(
-      [{K, A, B, C}],
+      {ok, {A, B, C}},
       fun
           () ->
-              ets:lookup(Replica, K)
+              pgec_storage_sync:read(
+                #{publication => Publication,
+                  table => Table,
+                  key => K})
       end),
 
     ?assertEqual(
@@ -247,8 +270,21 @@ wait_for(Expected, Check, N) ->
 end_per_suite(Config) ->
     Table = ?config(table, Config),
     C = ?config(client, Config),
+    Publication = ?config(publication, Config),
+    DB = ?config(db, Config),
 
     ok = gen_statem:stop(C),
+
+    ct:log(
+      "stop_replication: ~p~n",
+      [pgmp_db:stop_replication_on_publication(
+         DB,
+         Publication)]),
+
+    ct:log(
+      "~p~n",
+      [common:pbe(#{sql => "select pg_drop_replication_slot($1)",
+                    args => [pgmp_rep_log:slot_name(Publication)]})]),
 
     ct:log("~s: ~p~n",
            [Table,
@@ -258,7 +294,7 @@ end_per_suite(Config) ->
                            "drop table ~s cascade",
                            [Table]))})]),
 
-    common:purge_applications().
+    common:stop_applications().
 
 
 alpha(N) ->

@@ -240,7 +240,7 @@ Or via SQL:
 ```shell
 docker compose exec \
     --no-TTY \
-    postgres \
+    db \
     psql \
     --command="update grades set grade='C' where ssn='234-56-7890'"
 ```

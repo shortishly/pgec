@@ -32,6 +32,10 @@ recv(#{message := #{command := get, keys := Keys}} = Arg) ->
            (Key, A) ->
                try lookup(ptk(Key)) of
                    {ok, #{metadata := Metadata, row := Row}} ->
+                       ?LOG_DEBUG(#{key => Key,
+                                    metadata => Metadata,
+                                    row => Row}),
+
                        [{encode,
                          #{command => value,
                            key => Key,
@@ -40,16 +44,21 @@ recv(#{message := #{command := get, keys := Keys}} = Arg) ->
                            data => jsx:encode(row(Metadata, Row))}} | A];
 
                    not_found ->
+                       ?LOG_DEBUG(#{key => Key, lookup => not_found}),
                        A
                catch
-                   error:badarg ->
+                   Class:Exception:Stacktrace ->
+                       ?LOG_DEBUG(#{class => Class,
+                                    exception => Exception,
+                                    stacktrace => Stacktrace}),
                        A
                end
        end,
        [{encode, #{command => 'end'}}],
        Keys)};
 
-recv(#{message := #{command := Command}}) ->
+recv(#{message := #{command := Command}} = Arg) ->
+    ?LOG_DEBUG(#{arg => Arg}),
     {continue,
      {encode,
       #{command => client_error,
@@ -75,13 +84,15 @@ lookup(PTK) ->
 
 
 lookup(Metadata, PTK) ->
-    ?LOG_DEBUG(#{metadata => Metadata, ptk => PTK}),
-     ets:lookup(table(Metadata, PTK), key(Metadata, PTK)).
+    Key = key(Metadata, PTK),
+    ?LOG_DEBUG(#{metadata => Metadata, ptk => PTK, key => Key}),
+    case pgec_storage_sync:read(PTK#{key := Key}) of
+        {ok, Value} ->
+            [pgec_storage_common:row(Key, Value, Metadata)];
 
-
-table(Metadata, #{table := Table} = PTK) ->
-    ?LOG_DEBUG(#{metadata => Metadata, ptk => PTK}),
-    binary_to_existing_atom(Table).
+        not_found ->
+            []
+    end.
 
 
 key(Metadata, #{key := Encoded} = PTK) ->
@@ -91,7 +102,13 @@ key(Metadata, #{key := Encoded} = PTK) ->
 
 metadata(#{publication := Publication, table := Table} = Arg) ->
     ?LOG_DEBUG(#{arg => Arg}),
-    ets:lookup(pgec_metadata, {Publication, Table}).
+    case pgec_storage_sync:metadata(Arg) of
+        {ok, Metdata} ->
+            [{{Publication, Table}, Metdata}];
+
+        not_found ->
+            []
+    end.
 
 
 ptk(PTK) ->

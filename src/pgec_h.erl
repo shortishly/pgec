@@ -27,52 +27,14 @@ init(Req, Opts) ->
 
 
 init(#{bindings := #{publication := Publication,
-                     table := Table}} = Req,
-     Opts,
-     [] = Keys) ->
-
-    ?LOG_DEBUG(#{req => Req,
-                 opts => Opts,
-                 keys => Keys}),
-
-    ContentType = negotiate_content_type(Req),
-
-    case ets:lookup(
-           pgec_metadata,
-           {Publication, Table}) of
-
-        [{_, Metadata}] ->
-            {ok,
-             cowboy_req:reply(
-               200,
-               headers(ContentType),
-               [encode(
-                  ContentType,
-                  #{rows => ets:foldl(
-                              pgec_kv:row(Metadata, ContentType),
-                              [],
-                              table(Metadata, Req))}),
-                "\n"],
-               Req),
-             Opts};
-
-        [] ->
-            {ok, not_found(Req), Opts}
-    end;
-
-
-init(#{bindings := #{publication := Publication,
-                     table := Table}} = Req,
+                     table := Table} = Bindings} = Req,
      Opts,
      Keys) ->
 
     ?LOG_DEBUG(#{req => Req, opts => Opts, keys => Keys}),
 
-    case ets:lookup(
-           pgec_metadata,
-           {Publication, Table}) of
-
-        [{_, Metadata}] ->
+    case pgec_storage_sync:metadata(Bindings) of
+        {ok, Metadata} ->
             ?LOG_DEBUG(#{metadata => Metadata}),
 
             try lookup(Metadata, Req) of
@@ -120,29 +82,6 @@ init(#{bindings := #{publication := Publication,
              Opts}
     end;
 
-init(#{bindings := #{publication := Publication}} = Req,
-     Opts,
-     _) ->
-
-    ContentType = negotiate_content_type(Req),
-
-    {ok,
-     cowboy_req:reply(
-       200,
-       headers(ContentType),
-       [encode(
-          ContentType,
-          #{tables => ets:select(
-                        pgec_metadata,
-                        ets:fun2ms(
-                          fun
-                              ({{Pub, Table}, _}) when Publication == Pub ->
-                                  Table
-                          end))}),
-        "\n"],
-       Req),
-     Opts};
-
 init(Req, Opts, _) ->
     ?LOG_DEBUG(#{req => Req, opts => Opts}),
 
@@ -176,18 +115,21 @@ not_found(Req, Body) ->
     cowboy_req:reply(404, headers(), [jsx:encode(Body), "\n"], Req).
 
 
-not_found(Req) ->
-    cowboy_req:reply(404, #{}, <<>>, Req).
-
-
-lookup(Metadata, Req) ->
+lookup(Metadata,
+       #{bindings := Bindings} = Req) ->
     ?LOG_DEBUG(#{metadata => Metadata, req => Req}),
-    ets:lookup(table(Metadata, Req), key(Metadata, Req)).
+    Key = key(Metadata, Req),
+    case pgec_storage_sync:read(
+           maps:merge(
+             #{key => Key},
+             maps:with([publication, table], Bindings))) of
 
+        {ok, Value} ->
+            [pgec_storage_common:row(Key, Value, Metadata)];
 
-table(Metadata, #{bindings := #{table := Table}}) ->
-    ?LOG_DEBUG(#{metadata => Metadata, table => Table}),
-    binary_to_existing_atom(Table).
+        not_found ->
+            []
+    end.
 
 
 key(Metadata, Req) ->

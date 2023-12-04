@@ -13,31 +13,33 @@
 %% limitations under the License.
 
 
--module(pgec_metadata).
+-module(pgec_pg).
 
 
--export([callback_mode/0]).
--export([init/1]).
--export([start_link/0]).
--export([lookup/1]).
+-export([get_members/1]).
+-export([join/1]).
+-export([leave/1]).
+-export([which_groups/0]).
 -include_lib("kernel/include/logger.hrl").
 
 
-start_link() ->
-    gen_statem:start_link({local, ?MODULE},
-                          ?MODULE,
-                          [],
-                          envy_gen:options(?MODULE)).
+leave(Group) ->
+    ?LOG_DEBUG(#{group => Group}),
+    pg:leave(pgec_util:scope(), Group, self()).
 
 
-callback_mode() ->
-    handle_event_function.
+join(Group) ->
+    ?LOG_DEBUG(#{group => Group}),
+    pg:join(pgec_util:scope(), Group, self()).
 
 
-init([]) ->
-    {ok, ready, #{metadata => ets:new(?MODULE, [public, named_table])}}.
+get_members(Group) ->
+    Scope = pgec_util:scope(),
+    ?LOG_DEBUG(#{scope => Scope, group => Group}),
+    pg:get_members(Scope, Group).
 
 
-lookup(#{publication := Publication, table := Table} = Arg) ->
-    ?LOG_DEBUG(#{arg => Arg}),
-    ets:lookup(?MODULE, {Publication, Table}).
+which_groups() ->
+    Scope = pgec_util:scope(),
+    ?LOG_DEBUG(#{scope => Scope}),
+    pg:which_groups(Scope).
