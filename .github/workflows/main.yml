@@ -106,7 +106,7 @@ jobs:
           echo MATRIX_OTP="${{matrix.otp}}" >> $GITHUB_ENV
           echo MATRIX_PG="${{matrix.pg}}" >> $GITHUB_ENV
           echo ARTIFACT_NAME="ct-logs-otp-${MATRIX_OTP}-pg-${MATRIX_PG//[:\/]/-}" >> $GITHUB_ENV
-      - uses: actions/upload-artifact@v3
+      - uses: actions/upload-artifact@v4
         with:
           name: ${{env.ARTIFACT_NAME}}
           path: _site/ct
