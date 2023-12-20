@@ -56,7 +56,7 @@ jobs:
           input: _site/cover
           output: _site/cover/coverage.json
           otp-version: ${{matrix.otp}}
-      - uses: actions/upload-pages-artifact@v1
+      - uses: actions/upload-pages-artifact@v3
         with:
           path: _site
   deploy:
